@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * REST controller exposing borrower endpoints under {@code /api/borrowers}.
+ */
 @RestController
 @RequestMapping("/api/borrowers")
 public class BorrowerController {
@@ -19,11 +22,22 @@ public class BorrowerController {
         this.loanService = loanService;
     }
 
+    /**
+     * Retrieves all borrowers.
+     *
+     * @return list of all borrowers as DTOs
+     */
     @GetMapping
     public List<BorrowerDto> getAllBorrowers() {
         return loanService.getAllBorrowers();
     }
 
+    /**
+     * Retrieves a single borrower by ID, including their associated loans.
+     *
+     * @param id the borrower identifier
+     * @return the borrower with attached loan summaries
+     */
     @GetMapping("/{id}")
     public BorrowerDto getBorrower(@PathVariable String id) {
         return loanService.getBorrowerById(id);

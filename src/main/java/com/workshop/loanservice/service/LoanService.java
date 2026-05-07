@@ -45,6 +45,11 @@ public class LoanService {
         this.paymentRepository = paymentRepository;
     }
 
+    /**
+     * Retrieves all loans, joining with product data for descriptions.
+     *
+     * @return list of all loan summaries
+     */
     public List<LoanSummaryDto> getAllLoans() {
         Map<String, LegacyLoanProduct> products = loanProductRepository.findAll()
                 .stream()
@@ -55,6 +60,12 @@ public class LoanService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Retrieves a single loan by account number.
+     *
+     * @param loanAccountNumber the loan account number
+     * @return the loan summary
+     */
     public LoanSummaryDto getLoanById(String loanAccountNumber) {
         LegacyLoanAccount acct = loanAccountRepository.findById(loanAccountNumber)
                 .orElseThrow(() -> new RuntimeException("Loan not found: " + loanAccountNumber));
@@ -63,12 +74,23 @@ public class LoanService {
         return toLoanSummary(acct, product);
     }
 
+    /**
+     * Retrieves all borrowers as DTOs.
+     *
+     * @return list of all borrower DTOs
+     */
     public List<BorrowerDto> getAllBorrowers() {
         return borrowerRepository.findAll().stream()
                 .map(this::toBorrowerDto)
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Retrieves a borrower by ID with their associated loans attached.
+     *
+     * @param borrowerId the borrower identifier
+     * @return the borrower DTO with loan summaries
+     */
     public BorrowerDto getBorrowerById(String borrowerId) {
         LegacyBorrower borrower = borrowerRepository.findById(borrowerId)
                 .orElseThrow(() -> new RuntimeException("Borrower not found: " + borrowerId));
@@ -87,6 +109,12 @@ public class LoanService {
         return dto;
     }
 
+    /**
+     * Retrieves payment history for a loan, ordered by most recent first.
+     *
+     * @param loanAccountNumber the loan account number
+     * @return list of payment DTOs sorted by date descending
+     */
     public List<PaymentDto> getPaymentsByLoan(String loanAccountNumber) {
         return paymentRepository.findByLoanAccountNumberOrderByPaymentDateDesc(loanAccountNumber)
                 .stream()
@@ -100,6 +128,14 @@ public class LoanService {
     // to proper types. After migration, these should be simplified or removed.
     // =========================================================================
 
+    /**
+     * Converts a legacy loan account and its product into a clean {@link LoanSummaryDto},
+     * concatenating borrower name and property address fields.
+     *
+     * @param acct    the legacy loan account entity
+     * @param product the legacy loan product entity (may be {@code null})
+     * @return the populated loan summary DTO
+     */
     private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
         LoanSummaryDto dto = new LoanSummaryDto();
         dto.setLoanAccountNumber(acct.getLoanAccountNumber());
@@ -117,6 +153,13 @@ public class LoanService {
         return dto;
     }
 
+    /**
+     * Converts a legacy borrower entity into a {@link BorrowerDto},
+     * assembling the full name from first/middle/last.
+     *
+     * @param borrower the legacy borrower entity
+     * @return the populated borrower DTO
+     */
     private BorrowerDto toBorrowerDto(LegacyBorrower borrower) {
         BorrowerDto dto = new BorrowerDto();
         dto.setId(borrower.getBorrowerId());
@@ -131,6 +174,13 @@ public class LoanService {
         return dto;
     }
 
+    /**
+     * Converts a legacy payment entity into a {@link PaymentDto},
+     * parsing string amounts into {@link java.math.BigDecimal}.
+     *
+     * @param pmt the legacy payment entity
+     * @return the populated payment DTO
+     */
     private PaymentDto toPaymentDto(LegacyPayment pmt) {
         PaymentDto dto = new PaymentDto();
         dto.setPaymentId(pmt.getPaymentSequenceNumber());
@@ -154,16 +204,35 @@ public class LoanService {
         return new BigDecimal(amount.replace(",", ""));
     }
 
+    /**
+     * Parses a legacy decimal string (trimmed) into {@link BigDecimal}.
+     *
+     * @param value the raw string value
+     * @return the parsed decimal, or {@link BigDecimal#ZERO} for blank values
+     */
     private BigDecimal parseLegacyDecimal(String value) {
         if (value == null || value.isBlank()) return BigDecimal.ZERO;
         return new BigDecimal(value.trim());
     }
 
+    /**
+     * Parses a legacy integer string into {@link Integer},
+     * returning {@code null} for blank values.
+     *
+     * @param value the raw string value
+     * @return the parsed integer, or {@code null} if blank
+     */
     private Integer parseLegacyInteger(String value) {
         if (value == null || value.isBlank()) return null;
         return Integer.parseInt(value.trim());
     }
 
+    /**
+     * Expands loan status abbreviations (ACT, CLO, DFT, FRB) into human-readable strings.
+     *
+     * @param code the legacy status code
+     * @return the expanded status description
+     */
     private String expandStatusCode(String code) {
         if (code == null) return "Unknown";
         return switch (code) {
@@ -175,6 +244,12 @@ public class LoanService {
         };
     }
 
+    /**
+     * Expands property type codes (SFR, CND, MFR, TWN) into full descriptions.
+     *
+     * @param code the legacy property type code
+     * @return the expanded property type description
+     */
     private String expandPropertyType(String code) {
         if (code == null) return "Unknown";
         return switch (code) {
@@ -186,6 +261,12 @@ public class LoanService {
         };
     }
 
+    /**
+     * Expands payment type codes (REG, EXT, PRT, PRE) into full descriptions.
+     *
+     * @param code the legacy payment type code
+     * @return the expanded payment type description
+     */
     private String expandPaymentType(String code) {
         if (code == null) return "Unknown";
         return switch (code) {
@@ -197,6 +278,12 @@ public class LoanService {
         };
     }
 
+    /**
+     * Expands payment status codes (PST, REV, NSF, PND) into full descriptions.
+     *
+     * @param code the legacy payment status code
+     * @return the expanded payment status description
+     */
     private String expandPaymentStatus(String code) {
         if (code == null) return "Unknown";
         return switch (code) {
