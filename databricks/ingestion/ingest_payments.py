@@ -101,7 +101,9 @@ def transform_payments(df):
 def quarantine_bad_records(df):
     """Quarantine payments missing required fields."""
     bad_mask = (
-        F.col("loan_account_number").isNull()
+        F.col("legacy_payment_id").isNull()
+        | (F.trim(F.col("legacy_payment_id")) == "")
+        | F.col("loan_account_number").isNull()
         | (F.trim(F.col("loan_account_number")) == "")
         | F.col("payment_date").isNull()
         | F.col("total_amount").isNull()

@@ -8,7 +8,7 @@
 
 CREATE TABLE IF NOT EXISTS loan_warehouse.payments (
     payment_key             BIGINT GENERATED ALWAYS AS IDENTITY,
-    legacy_payment_id       STRING,
+    legacy_payment_id       STRING NOT NULL,
     loan_account_number     STRING NOT NULL,
     payment_date            DATE NOT NULL,
     total_amount            DECIMAL(10, 2) NOT NULL,
@@ -35,3 +35,6 @@ TBLPROPERTIES (
     'delta.autoOptimize.autoCompact'   = 'true',
     'quality.tier'                     = 'gold'
 );
+
+ALTER TABLE loan_warehouse.payments
+ADD CONSTRAINT payments_legacy_id_unique UNIQUE (legacy_payment_id);
