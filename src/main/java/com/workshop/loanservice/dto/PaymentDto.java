@@ -1,6 +1,8 @@
 package com.workshop.loanservice.dto;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Payment DTO for API responses.
@@ -15,8 +17,10 @@ public class PaymentDto {
     private BigDecimal interestAmount;
     private BigDecimal escrowAmount;
     private BigDecimal lateFee;
+    private BigDecimal computedTotal;
     private String type;
     private String status;
+    private List<String> dataQualityWarnings = new ArrayList<>();
 
     public String getPaymentId() { return paymentId; }
     public void setPaymentId(String paymentId) { this.paymentId = paymentId; }
@@ -36,6 +40,10 @@ public class PaymentDto {
     public void setLateFee(BigDecimal lateFee) { this.lateFee = lateFee; }
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
+    public BigDecimal getComputedTotal() { return computedTotal; }
+    public void setComputedTotal(BigDecimal computedTotal) { this.computedTotal = computedTotal; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public List<String> getDataQualityWarnings() { return dataQualityWarnings; }
+    public void setDataQualityWarnings(List<String> dataQualityWarnings) { this.dataQualityWarnings = dataQualityWarnings; }
 }
