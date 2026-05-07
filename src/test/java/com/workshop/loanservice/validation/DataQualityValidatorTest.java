@@ -103,6 +103,12 @@ class DataQualityValidatorTest {
         }
 
         @Test
+        void parsesDecimalWithDollarSign() {
+            BigDecimal result = validator.parseDecimal("$4.750", "testField");
+            assertEquals(new BigDecimal("4.750"), result);
+        }
+
+        @Test
         void returnsNullForUnparseableDecimal() {
             BigDecimal result = validator.parseDecimal("TBD", "testField");
             assertNull(result);

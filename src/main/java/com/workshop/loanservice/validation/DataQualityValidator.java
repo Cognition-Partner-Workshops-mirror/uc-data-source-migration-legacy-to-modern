@@ -93,7 +93,7 @@ public class DataQualityValidator {
                     "Null or blank decimal value");
             return null;
         }
-        String normalized = value.replace(",", "").trim();
+        String normalized = value.replace(",", "").replace("$", "").trim();
         try {
             return new BigDecimal(normalized);
         } catch (NumberFormatException e) {

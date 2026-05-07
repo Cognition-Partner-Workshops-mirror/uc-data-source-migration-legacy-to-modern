@@ -65,7 +65,7 @@ Normalize all amount strings by stripping commas, dollar signs, and whitespace b
 ```
 
 **Business Impact:**
-The schema comment says `MM/DD/YYYY` but there is no constraint enforcing this. The service layer passes date strings directly to DTOs without parsing (e.g., `dto.setOriginationDate(acct.getOriginationDate())` on line 113 of `LoanService.java`). If a record contains `YYYY-MM-DD`, `DD/MM/YYYY`, or a garbage string, it will silently propagate to API consumers. Date comparisons and sorting in the payment repository (`findByLoanAccountNumberOrderByPaymentDateDesc`) use lexicographic ordering on strings, not chronological ordering — `'12/01/2025'` sorts before `'02/01/2025'` lexicographically.
+The schema comment says `MM/DD/YYYY` but there is no constraint enforcing this. The service layer passes date strings directly to DTOs without parsing (e.g., `dto.setOriginationDate(acct.getOriginationDate())` on line 113 of `LoanService.java`). If a record contains `YYYY-MM-DD`, `DD/MM/YYYY`, or a garbage string, it will silently propagate to API consumers. Date comparisons and sorting in the payment repository (`findByLoanAccountNumberOrderByPaymentDateDesc`) use lexicographic ordering on strings, not chronological ordering — e.g., `'12/01/2024'` sorts after `'01/15/2025'` lexicographically (`'1' > '0'`), but December 2024 is chronologically before January 2025. Within the same year, single-digit months (01-09) also sort incorrectly against double-digit months (10-12).
 
 **Recommended Fix:**
 Parse all date strings to `java.time.LocalDate` at ingestion time using `DateTimeFormatter.ofPattern("MM/dd/yyyy")`. Reject or quarantine records with unparseable dates. Store parsed dates in DTOs.
@@ -232,9 +232,19 @@ Validate status codes against the known enumeration at ingestion time. Normalize
 -- Total stated: 1,487.02
 -- MISMATCH: components sum to $400.00 more than the stated total
 
+-- PMT-2025110001: total=1,487.02, principal=454.97, interest=1,076.50, escrow=355.55, late_fee=0.00
+-- Sum: 454.97 + 1,076.50 + 355.55 + 0.00 = 1,887.02
+-- MISMATCH: same $400.00 discrepancy (systematic issue on loan LN-2019-00142)
+
+-- PMT-2025110003: total=1,077.05, principal=295.82, interest=781.23, escrow=0.00, late_fee=47.50
+-- Sum: 295.82 + 781.23 + 0.00 + 47.50 = 1,124.55
+-- MISMATCH: $47.50 over — the late fee appears to be double-counted
+
 -- PMT-2025120002: total=2,924.18, principal=1,842.56, interest=815.50, escrow=266.12, late_fee=0.00
--- Sum: 1,842.56 + 815.50 + 266.12 + 0.00 = 2,924.18 ✓ (this one matches)
+-- Sum: 1,842.56 + 815.50 + 266.12 + 0.00 = 2,924.18 ✓ (matches)
 ```
+
+3 of 10 payments (30%) have component mismatches in the seed data.
 
 **Business Impact:**
 When payment components don't sum to the total, it creates an accounting discrepancy. Downstream systems that rely on component breakdowns for tax reporting (interest is tax-deductible for mortgages), escrow analysis, or amortization schedules will produce incorrect results. The service layer passes these amounts through without any reconciliation check.
