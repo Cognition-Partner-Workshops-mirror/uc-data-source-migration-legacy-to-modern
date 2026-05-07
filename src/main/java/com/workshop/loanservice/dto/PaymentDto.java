@@ -1,6 +1,7 @@
 package com.workshop.loanservice.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Payment DTO for API responses.
@@ -17,6 +18,7 @@ public class PaymentDto {
     private BigDecimal lateFee;
     private String type;
     private String status;
+    private List<String> validationWarnings;
 
     public String getPaymentId() { return paymentId; }
     public void setPaymentId(String paymentId) { this.paymentId = paymentId; }
@@ -38,4 +40,6 @@ public class PaymentDto {
     public void setType(String type) { this.type = type; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public List<String> getValidationWarnings() { return validationWarnings; }
+    public void setValidationWarnings(List<String> validationWarnings) { this.validationWarnings = validationWarnings; }
 }
