@@ -11,6 +11,11 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.validation.DataQualityWarning;
+import com.workshop.loanservice.validation.LegacyDataValidator;
+import com.workshop.loanservice.validation.ValidationResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,27 +27,31 @@ import java.util.stream.Collectors;
  * Service layer that reads from legacy tables and translates
  * cryptic legacy fields into clean DTOs.
  *
- * MIGRATION TASK: This service contains all the translation logic
- * between legacy string-typed fields and proper Java types.
- * When switching data sources, this layer needs to be updated
- * (or replaced) to read from the modern schema.
+ * Includes data quality validation that catches known CDW anomalies
+ * at ingestion time: numeric parsing errors, date format issues,
+ * business rule violations, and referential integrity problems.
  */
 @Service
 public class LoanService {
+
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
 
     private final LegacyBorrowerRepository borrowerRepository;
     private final LegacyLoanAccountRepository loanAccountRepository;
     private final LegacyLoanProductRepository loanProductRepository;
     private final LegacyPaymentRepository paymentRepository;
+    private final LegacyDataValidator validator;
 
     public LoanService(LegacyBorrowerRepository borrowerRepository,
                        LegacyLoanAccountRepository loanAccountRepository,
                        LegacyLoanProductRepository loanProductRepository,
-                       LegacyPaymentRepository paymentRepository) {
+                       LegacyPaymentRepository paymentRepository,
+                       LegacyDataValidator validator) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanProductRepository = loanProductRepository;
         this.paymentRepository = paymentRepository;
+        this.validator = validator;
     }
 
     public List<LoanSummaryDto> getAllLoans() {
@@ -74,7 +83,6 @@ public class LoanService {
                 .orElseThrow(() -> new RuntimeException("Borrower not found: " + borrowerId));
         BorrowerDto dto = toBorrowerDto(borrower);
 
-        // Attach loans for this borrower
         Map<String, LegacyLoanProduct> products = loanProductRepository.findAll()
                 .stream()
                 .collect(Collectors.toMap(LegacyLoanProduct::getProductCode, p -> p));
@@ -95,43 +103,67 @@ public class LoanService {
     }
 
     // =========================================================================
-    // LEGACY TRANSLATION METHODS
-    // These methods handle the messy conversion from legacy string fields
-    // to proper types. After migration, these should be simplified or removed.
+    // LEGACY TRANSLATION METHODS WITH VALIDATION
     // =========================================================================
 
     private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
+        ValidationResult validation = validator.validateLoanAccount(acct);
+
+        boolean borrowerExists = acct.getBorrowerId() != null
+                && borrowerRepository.existsById(acct.getBorrowerId());
+        boolean productExists = acct.getProductCode() != null
+                && loanProductRepository.existsById(acct.getProductCode());
+        validator.validateReferentialIntegrity(acct, borrowerExists, productExists, validation);
+
+        if (acct.getBorrowerId() != null && acct.getBorrowerSsnLast4() != null) {
+            borrowerRepository.findById(acct.getBorrowerId()).ifPresent(borrower ->
+                    validator.validateSsnAgainstPhone(
+                            acct.getBorrowerSsnLast4(),
+                            borrower.getPhoneNumber(),
+                            acct.getLoanAccountNumber(),
+                            validation));
+        }
+
+        logValidationWarnings(validation, "LoanAccount", acct.getLoanAccountNumber());
+
         LoanSummaryDto dto = new LoanSummaryDto();
         dto.setLoanAccountNumber(acct.getLoanAccountNumber());
-        dto.setBorrowerName(acct.getBorrowerFirstName() + " " + acct.getBorrowerLastName());
+        dto.setBorrowerName(safeConcatName(acct.getBorrowerFirstName(), acct.getBorrowerLastName()));
         dto.setProductDescription(product != null ? product.getDescription() : acct.getProductCode());
         dto.setOriginalAmount(parseLegacyAmount(acct.getOriginalAmount()));
         dto.setCurrentBalance(parseLegacyAmount(acct.getCurrentBalance()));
         dto.setInterestRate(parseLegacyDecimal(acct.getInterestRate()));
         dto.setMonthlyPayment(parseLegacyAmount(acct.getMonthlyPayment()));
-        dto.setStatus(expandStatusCode(acct.getStatusCode()));
+        dto.setStatus(resolveEffectiveStatus(acct));
         dto.setOriginationDate(acct.getOriginationDate());
-        dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
-                + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
+        dto.setPropertyAddress(buildPropertyAddress(acct));
         dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
+        dto.setDataQualityWarnings(toWarningStrings(validation));
         return dto;
     }
 
     private BorrowerDto toBorrowerDto(LegacyBorrower borrower) {
+        ValidationResult validation = validator.validateBorrower(borrower);
+        logValidationWarnings(validation, "Borrower", borrower.getBorrowerId());
+
         BorrowerDto dto = new BorrowerDto();
         dto.setId(borrower.getBorrowerId());
         String middle = borrower.getMiddleInitial() != null ? " " + borrower.getMiddleInitial() + "." : "";
-        dto.setFullName(borrower.getFirstName() + middle + " " + borrower.getLastName());
+        dto.setFullName(safeConcatName(borrower.getFirstName(), borrower.getLastName(), middle));
         dto.setEmail(borrower.getEmail());
         dto.setPhone(borrower.getPhoneNumber());
         dto.setCity(borrower.getCity());
         dto.setState(borrower.getStateCode());
         dto.setCreditScore(parseLegacyInteger(borrower.getCreditScore()));
         dto.setEmploymentStatus(borrower.getEmploymentStatus());
+        dto.setDataQualityWarnings(toWarningStrings(validation));
         return dto;
     }
 
     private PaymentDto toPaymentDto(LegacyPayment pmt) {
+        ValidationResult validation = validator.validatePayment(pmt);
+        logValidationWarnings(validation, "Payment", pmt.getPaymentSequenceNumber());
+
         PaymentDto dto = new PaymentDto();
         dto.setPaymentId(pmt.getPaymentSequenceNumber());
         dto.setLoanAccountNumber(pmt.getLoanAccountNumber());
@@ -143,25 +175,86 @@ public class LoanService {
         dto.setLateFee(parseLegacyAmount(pmt.getLateFee()));
         dto.setType(expandPaymentType(pmt.getTypeCode()));
         dto.setStatus(expandPaymentStatus(pmt.getStatusCode()));
+
+        BigDecimal componentSum = dto.getPrincipalAmount()
+                .add(dto.getInterestAmount())
+                .add(dto.getEscrowAmount())
+                .add(dto.getLateFee());
+        BigDecimal diff = componentSum.subtract(dto.getTotalAmount()).abs();
+        if (diff.compareTo(new BigDecimal("0.01")) > 0) {
+            dto.setRecalculatedTotal(componentSum);
+        }
+
+        dto.setDataQualityWarnings(toWarningStrings(validation));
         return dto;
     }
 
-    /**
-     * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
-     */
-    private BigDecimal parseLegacyAmount(String amount) {
+    // =========================================================================
+    // SAFE PARSING WITH ERROR HANDLING
+    // =========================================================================
+
+    BigDecimal parseLegacyAmount(String amount) {
         if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
+        try {
+            return new BigDecimal(amount.replace(",", ""));
+        } catch (NumberFormatException e) {
+            log.warn("Failed to parse amount '{}': {}", amount, e.getMessage());
+            return BigDecimal.ZERO;
+        }
     }
 
-    private BigDecimal parseLegacyDecimal(String value) {
+    BigDecimal parseLegacyDecimal(String value) {
         if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
+        try {
+            return new BigDecimal(value.trim());
+        } catch (NumberFormatException e) {
+            log.warn("Failed to parse decimal '{}': {}", value, e.getMessage());
+            return BigDecimal.ZERO;
+        }
     }
 
-    private Integer parseLegacyInteger(String value) {
+    Integer parseLegacyInteger(String value) {
         if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            log.warn("Failed to parse integer '{}': {}", value, e.getMessage());
+            return null;
+        }
+    }
+
+    // =========================================================================
+    // BUSINESS LOGIC HELPERS
+    // =========================================================================
+
+    private String resolveEffectiveStatus(LegacyLoanAccount acct) {
+        String baseStatus = expandStatusCode(acct.getStatusCode());
+        Integer dlqDays = parseLegacyInteger(acct.getDelinquencyDays());
+        if (dlqDays != null && dlqDays > 0 && "ACT".equals(acct.getStatusCode())) {
+            return baseStatus + " (Delinquent - " + dlqDays + " days)";
+        }
+        return baseStatus;
+    }
+
+    private String safeConcatName(String firstName, String lastName) {
+        String first = (firstName != null && !firstName.isBlank()) ? firstName : "[Unknown]";
+        String last = (lastName != null && !lastName.isBlank()) ? lastName : "[Unknown]";
+        return first + " " + last;
+    }
+
+    private String safeConcatName(String firstName, String lastName, String middle) {
+        String first = (firstName != null && !firstName.isBlank()) ? firstName : "[Unknown]";
+        String last = (lastName != null && !lastName.isBlank()) ? lastName : "[Unknown]";
+        return first + middle + " " + last;
+    }
+
+    private String buildPropertyAddress(LegacyLoanAccount acct) {
+        StringBuilder sb = new StringBuilder();
+        if (acct.getPropertyAddress() != null) sb.append(acct.getPropertyAddress());
+        if (acct.getPropertyCity() != null) sb.append(", ").append(acct.getPropertyCity());
+        if (acct.getPropertyState() != null) sb.append(", ").append(acct.getPropertyState());
+        if (acct.getPropertyZip() != null) sb.append(" ").append(acct.getPropertyZip());
+        return sb.toString();
     }
 
     private String expandStatusCode(String code) {
@@ -206,5 +299,25 @@ public class LoanService {
             case "PND" -> "Pending";
             default -> code;
         };
+    }
+
+    private void logValidationWarnings(ValidationResult result, String entityType, String entityId) {
+        if (result.hasWarnings()) {
+            for (DataQualityWarning warning : result.getWarnings()) {
+                if (warning.getSeverity() == DataQualityWarning.Severity.CRITICAL
+                        || warning.getSeverity() == DataQualityWarning.Severity.HIGH) {
+                    log.warn("Data quality issue in {} [{}]: {}", entityType, entityId, warning);
+                } else {
+                    log.info("Data quality note in {} [{}]: {}", entityType, entityId, warning);
+                }
+            }
+        }
+    }
+
+    private List<String> toWarningStrings(ValidationResult result) {
+        if (!result.hasWarnings()) return null;
+        return result.getWarnings().stream()
+                .map(DataQualityWarning::toString)
+                .collect(Collectors.toList());
     }
 }
