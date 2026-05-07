@@ -19,6 +19,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
 
+# Import shared transformation helpers for legacy VARCHAR → typed column conversions
 from .transforms import (
     PAYMENT_STATUS_MAP,
     PAYMENT_TYPE_MAP,
@@ -30,6 +31,7 @@ from .transforms import (
 
 logger = logging.getLogger("ingestion.payments")
 
+# Target Delta Lake table, partitioned by payment_year for time-range analytics
 TARGET_TABLE = "loan_warehouse.payments"
 
 LEGACY_SCHEMA = StructType([
@@ -69,18 +71,23 @@ def _load_loan_lookup(spark: SparkSession) -> DataFrame:
 
 
 def transform(df: DataFrame, spark: SparkSession) -> DataFrame:
+    # Load FK lookup from already-ingested loan_accounts table
     loan_lkp = _load_loan_lookup(spark)
 
+    # Map legacy columns to modern names with type conversions
     base = df.select(
+        # Preserve original sequence number for audit traceability
         F.col("PMT_SEQ_NBR").alias("legacy_sequence_nbr"),
-        F.col("LN_ACCT_NBR").alias("_acct_nbr"),
+        F.col("LN_ACCT_NBR").alias("_acct_nbr"),  # temporary column for FK join
         parse_date("PMT_DT").alias("payment_date"),
         parse_amount("PMT_AMT", 10, 2).alias("total_amount"),
         parse_amount("PMT_PRIN_AMT", 10, 2).alias("principal_amount"),
         parse_amount("PMT_INT_AMT", 10, 2).alias("interest_amount"),
         parse_amount("PMT_ESCROW_AMT", 10, 2).alias("escrow_amount"),
         parse_amount("PMT_LATE_FEE", 10, 2).alias("late_fee"),
+        # Expand payment type: REG→REGULAR, EXT→EXTRA, PRT→PARTIAL, PRE→PREPAYMENT
         expand_status("PMT_TYP_CD", PAYMENT_TYPE_MAP, alias="type"),
+        # Expand payment status: PST→POSTED, REV→REVERSED, NSF→NSF, PND→PENDING
         expand_status("PMT_STAT_CD", PAYMENT_STATUS_MAP, alias="status"),
         parse_date("PMT_RECV_DT").alias("received_date"),
         parse_date("PMT_PROC_DT").alias("processed_date"),
@@ -88,7 +95,7 @@ def transform(df: DataFrame, spark: SparkSession) -> DataFrame:
         parse_timestamp("PMT_UPDT_DT").alias("updated_at"),
     )
 
-    # Resolve loan account FK
+    # Resolve loan account FK: join LN_ACCT_NBR against loan_accounts.account_number
     with_loan = base.join(
         loan_lkp,
         base["_acct_nbr"] == loan_lkp["account_number"],
@@ -102,12 +109,13 @@ def transform(df: DataFrame, spark: SparkSession) -> DataFrame:
             unresolved,
         )
 
+    # Flag rows with missing PKs or unresolved FKs; invalid rows are kept, not dropped
     result = with_loan.withColumn(
         "_is_valid",
         F.col("legacy_sequence_nbr").isNotNull()
         & F.col("loan_account_id").isNotNull()
         & F.col("payment_date").isNotNull(),
-    ).drop("_acct_nbr")
+    ).drop("_acct_nbr")  # drop temporary join column
 
     return result
 

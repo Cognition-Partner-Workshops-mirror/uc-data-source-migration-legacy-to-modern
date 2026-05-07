@@ -19,6 +19,7 @@ import sys
 
 from pyspark.sql import SparkSession
 
+# Import the main quality orchestrator that runs all 4 categories of checks
 from .data_quality import run_quality_checks
 
 logging.basicConfig(
@@ -34,7 +35,8 @@ def main(
     source_format: str = "csv",
     report_path: str = "dbfs:/mnt/reports/DATA_QUALITY_REPORT.md",
 ) -> None:
-    """Run quality checks and write the report."""
+    """Run all quality checks and write the markdown report; exits with code 1 on failures."""
+    # Execute all 4 check categories: row counts, nulls, referential integrity, business rules
     report = run_quality_checks(
         spark=spark,
         source_base_path=source_base_path,

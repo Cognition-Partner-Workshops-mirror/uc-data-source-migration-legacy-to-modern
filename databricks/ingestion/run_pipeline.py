@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from pyspark.sql import SparkSession
 
+# Import per-table ingestion entry points; each returns a transformed DataFrame
 from .ingest_borrowers import run as ingest_borrowers
 from .ingest_loan_accounts import run as ingest_loan_accounts
 from .ingest_loan_products import run as ingest_loan_products
@@ -33,10 +34,11 @@ logger = logging.getLogger("pipeline")
 
 @dataclass
 class StepResult:
+    """Captures the outcome of a single ingestion step for the pipeline report."""
     name: str
     row_count: int = 0
     elapsed_seconds: float = 0.0
-    status: str = "SUCCESS"
+    status: str = "SUCCESS"  # SUCCESS, FAILED, or SKIPPED
     error: str = ""
 
 
@@ -97,7 +99,7 @@ def run_full_pipeline(
 
     bp = base_path.rstrip("/")
 
-    # Step 1: Borrowers
+    # Step 1: Borrowers — no upstream dependencies, can run first
     result = _run_step(
         "borrowers",
         ingest_borrowers,
@@ -108,7 +110,7 @@ def run_full_pipeline(
     )
     report.steps.append(result)
 
-    # Step 2: Loan Products
+    # Step 2: Loan Products — no upstream dependencies, runs after borrowers
     result = _run_step(
         "loan_products",
         ingest_loan_products,
@@ -119,7 +121,7 @@ def run_full_pipeline(
     )
     report.steps.append(result)
 
-    # Step 3: Loan Accounts (depends on 1 + 2)
+    # Step 3: Loan Accounts — depends on borrowers + products for FK resolution
     if report.steps[0].status == "SUCCESS" and report.steps[1].status == "SUCCESS":
         result = _run_step(
             "loan_accounts",
@@ -137,7 +139,7 @@ def run_full_pipeline(
         )
     report.steps.append(result)
 
-    # Step 4: Payments (depends on 3)
+    # Step 4: Payments — depends on loan_accounts for FK resolution
     if result.status == "SUCCESS":
         result = _run_step(
             "payments",

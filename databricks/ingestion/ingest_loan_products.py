@@ -14,6 +14,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
 
+# Import shared transformation helpers for legacy VARCHAR → typed column conversions
 from .transforms import (
     expand_product_active,
     parse_amount,
@@ -23,6 +24,7 @@ from .transforms import (
 
 logger = logging.getLogger("ingestion.loan_products")
 
+# Target Delta Lake table — small reference table, no partitioning needed
 TARGET_TABLE = "loan_warehouse.loan_products"
 
 LEGACY_SCHEMA = StructType([
@@ -50,6 +52,7 @@ def read_source(spark: SparkSession, path: str, fmt: str = "csv") -> DataFrame:
 
 
 def transform(df: DataFrame) -> DataFrame:
+    # Map legacy cryptic column names to modern readable names with type conversions
     transformed = df.select(
         F.col("PROD_CD").alias("code"),
         F.trim(F.col("PROD_DESC_TXT")).alias("name"),
@@ -58,6 +61,7 @@ def transform(df: DataFrame) -> DataFrame:
         F.col("PROD_RT_TYP").alias("rate_type"),
         parse_amount("PROD_MIN_AMT").alias("min_amount"),
         parse_amount("PROD_MAX_AMT").alias("max_amount"),
+        # Convert product status code to boolean: ACT → true, INA → false
         expand_product_active("PROD_STAT_CD"),
         parse_date("PROD_EFF_DT").alias("effective_date"),
         parse_date("PROD_EXP_DT").alias("expiration_date"),

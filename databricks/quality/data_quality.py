@@ -32,6 +32,7 @@ logger = logging.getLogger("quality")
 
 @dataclass
 class CheckResult:
+    """Single quality check result with category, name, pass/fail status, and detail."""
     category: str
     name: str
     passed: bool
@@ -43,6 +44,7 @@ class CheckResult:
 
 @dataclass
 class QualityReport:
+    """Aggregates all check results and generates markdown report output."""
     checks: list[CheckResult] = field(default_factory=list)
     generated_at: str = ""
 
@@ -269,7 +271,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
         ))
         return results
 
-    # Rule 1: Active loans must have current_balance > 0
+    # Business Rule 1: Active loans must have a positive balance to be valid
     active_zero_bal = loans.filter(
         (F.col("status") == "ACTIVE") & (F.col("current_balance") <= 0)
     ).count()
@@ -280,7 +282,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
         detail=f"Violations: {active_zero_bal}",
     ))
 
-    # Rule 2: Loan original_amount must be positive
+    # Business Rule 2: All loans must have a positive original amount
     negative_orig = loans.filter(F.col("original_amount") <= 0).count()
     results.append(CheckResult(
         category="4. Business Rules",
@@ -289,7 +291,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
         detail=f"Violations: {negative_orig}",
     ))
 
-    # Rule 3: Interest rate should be between 0 and 100
+    # Business Rule 3: Interest rate must be a valid percentage [0, 100]
     bad_rate = loans.filter(
         (F.col("interest_rate") < 0) | (F.col("interest_rate") > 100)
     ).count()
@@ -300,7 +302,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
         detail=f"Violations: {bad_rate}",
     ))
 
-    # Rule 4: Maturity date must be after origination date
+    # Business Rule 4: Maturity date must be after origination to be logically valid
     bad_dates = loans.filter(
         F.col("maturity_date") <= F.col("origination_date")
     ).count()
@@ -311,7 +313,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
         detail=f"Violations: {bad_dates}",
     ))
 
-    # Rule 5: LTV percent should be between 0 and 200 (if present)
+    # Business Rule 5: LTV percent must be in [0, 200] — allows up to 200% for underwater loans
     bad_ltv = loans.filter(
         F.col("ltv_percent").isNotNull()
         & ((F.col("ltv_percent") < 0) | (F.col("ltv_percent") > 200))
@@ -323,7 +325,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
         detail=f"Violations: {bad_ltv}",
     ))
 
-    # Rule 6: Delinquency days must be non-negative
+    # Business Rule 6: Delinquency days cannot be negative
     bad_dlq = loans.filter(F.col("delinquency_days") < 0).count()
     results.append(CheckResult(
         category="4. Business Rules",
@@ -332,7 +334,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
         detail=f"Violations: {bad_dlq}",
     ))
 
-    # Rule 7: Status values are in the expected set
+    # Business Rule 7: Loan status must be one of the expanded status values
     valid_statuses = {"ACTIVE", "CLOSED", "DEFAULT", "FORBEARANCE"}
     unknown_status = loans.filter(~F.col("status").isin(valid_statuses)).count()
     results.append(CheckResult(
@@ -342,7 +344,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
         detail=f"Unknown statuses: {unknown_status}",
     ))
 
-    # Rule 8: Payment amounts should be non-negative
+    # Business Rule 8: Payment amounts must be non-negative
     try:
         payments = spark.table("loan_warehouse.payments")
         neg_pmt = payments.filter(F.col("total_amount") < 0).count()
@@ -360,7 +362,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
             detail="payments table not found",
         ))
 
-    # Rule 9: Borrower credit scores in valid range (300-850)
+    # Business Rule 9: Credit scores must be in FICO range [300, 850]
     try:
         borrowers = spark.table("loan_warehouse.borrowers")
         bad_credit = borrowers.filter(
@@ -381,7 +383,7 @@ def check_business_rules(spark: SparkSession) -> list[CheckResult]:
             detail="borrowers table not found",
         ))
 
-    # Rule 10: Borrower annual income must be non-negative
+    # Business Rule 10: Annual income cannot be negative
     try:
         borrowers = spark.table("loan_warehouse.borrowers")
         neg_income = borrowers.filter(

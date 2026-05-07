@@ -20,6 +20,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
 
+# Import shared transformation helpers for legacy VARCHAR → typed column conversions
 from .transforms import (
     LOAN_STATUS_MAP,
     PROPERTY_TYPE_MAP,
@@ -34,14 +35,18 @@ from .transforms import (
 
 logger = logging.getLogger("ingestion.loan_accounts")
 
+# Target Delta Lake table, partitioned by loan status for portfolio segmentation queries
 TARGET_TABLE = "loan_warehouse.loan_accounts"
 
+# Explicit schema for all 27 columns in CDW_LN_ACCT — includes the 3 denormalized
+# borrower fields (BORR_FST_NM, BORR_LST_NM, BORR_SSN_LST4) that will be dropped
+# during transformation in favor of a borrower_id foreign key
 LEGACY_SCHEMA = StructType([
     StructField("LN_ACCT_NBR", StringType(), True),
     StructField("BORR_ID", StringType(), True),
-    StructField("BORR_FST_NM", StringType(), True),
-    StructField("BORR_LST_NM", StringType(), True),
-    StructField("BORR_SSN_LST4", StringType(), True),
+    StructField("BORR_FST_NM", StringType(), True),     # denormalized — will be dropped
+    StructField("BORR_LST_NM", StringType(), True),     # denormalized — will be dropped
+    StructField("BORR_SSN_LST4", StringType(), True),   # denormalized — will be dropped
     StructField("PROD_CD", StringType(), True),
     StructField("LN_ORIG_AMT", StringType(), True),
     StructField("LN_CURR_BAL", StringType(), True),
@@ -94,14 +99,16 @@ def _load_product_lookup(spark: SparkSession) -> DataFrame:
 
 
 def transform(df: DataFrame, spark: SparkSession) -> DataFrame:
+    # Load FK lookup tables from already-ingested dimension tables
     borrower_lkp = _load_borrower_lookup(spark)
     product_lkp = _load_product_lookup(spark)
 
-    # Apply type transformations and column renames
+    # Apply type transformations and column renames; denormalized borrower columns
+    # (BORR_FST_NM, BORR_LST_NM, BORR_SSN_LST4) are intentionally NOT selected here
     base = df.select(
         F.col("LN_ACCT_NBR").alias("account_number"),
-        F.col("BORR_ID").alias("_borr_ext_id"),
-        F.col("PROD_CD").alias("_prod_cd"),
+        F.col("BORR_ID").alias("_borr_ext_id"),       # temporary column for FK join
+        F.col("PROD_CD").alias("_prod_cd"),               # temporary column for FK join
         parse_amount("LN_ORIG_AMT").alias("original_amount"),
         parse_amount("LN_CURR_BAL").alias("current_balance"),
         parse_rate("LN_INT_RT").alias("interest_rate"),
@@ -111,6 +118,7 @@ def transform(df: DataFrame, spark: SparkSession) -> DataFrame:
         parse_date("LN_MAT_DT").alias("maturity_date"),
         parse_date("LN_1ST_PMT_DT").alias("first_payment_date"),
         parse_date("LN_NXT_PMT_DT").alias("next_payment_date"),
+        # Expand loan status: ACT→ACTIVE, CLO→CLOSED, DFT→DEFAULT, FRB→FORBEARANCE
         expand_status("LN_STAT_CD", LOAN_STATUS_MAP, alias="status"),
         parse_int("LN_DLQ_DAYS").alias("delinquency_days"),
         parse_amount("LN_ESCROW_BAL", 10, 2).alias("escrow_balance"),
@@ -119,20 +127,21 @@ def transform(df: DataFrame, spark: SparkSession) -> DataFrame:
         F.col("PROP_CTY_NM").alias("property_city"),
         F.col("PROP_ST_CD").alias("property_state"),
         F.col("PROP_ZIP_CD").alias("property_zip"),
+        # Expand property type: SFR→Single Family, CND→Condominium, etc.
         expand_status("PROP_TYP_CD", PROPERTY_TYPE_MAP, alias="property_type"),
         parse_amount("PROP_APRS_VAL").alias("appraised_value"),
         parse_timestamp("LN_CRET_DT").alias("created_at"),
         parse_timestamp("LN_UPDT_DT").alias("updated_at"),
     )
 
-    # Resolve borrower FK
+    # Resolve borrower FK: join BORR_ID against borrowers.external_id → get borrower_id
     with_borrower = base.join(
         borrower_lkp,
         base["_borr_ext_id"] == borrower_lkp["external_id"],
         "left",
     ).drop("external_id")
 
-    # Resolve product FK
+    # Resolve product FK: join PROD_CD against loan_products.code → get product_id
     with_product = with_borrower.join(
         product_lkp,
         with_borrower["_prod_cd"] == product_lkp["product_code"],
@@ -153,12 +162,13 @@ def transform(df: DataFrame, spark: SparkSession) -> DataFrame:
             unresolved_products,
         )
 
+    # Flag rows with missing PKs or unresolved FKs; invalid rows are kept, not dropped
     result = with_product.withColumn(
         "_is_valid",
         F.col("account_number").isNotNull()
         & F.col("borrower_id").isNotNull()
         & F.col("product_id").isNotNull(),
-    ).drop("_borr_ext_id", "_prod_cd")
+    ).drop("_borr_ext_id", "_prod_cd")  # drop temporary join columns
 
     return result
 

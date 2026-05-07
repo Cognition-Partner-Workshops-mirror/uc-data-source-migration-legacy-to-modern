@@ -9,6 +9,7 @@ than silently dropping entire rows.
 
 from pyspark.sql import Column
 from pyspark.sql import functions as F
+# DateType/DecimalType/IntegerType used for casting legacy VARCHAR values to proper Spark types
 from pyspark.sql.types import DateType, DecimalType, IntegerType
 
 
@@ -21,11 +22,13 @@ def parse_date(col_name: str) -> Column:
 
     Returns ``None`` for null or unparseable values.
     """
+    # Legacy CDW stores all dates as MM/DD/YYYY strings; to_date handles the conversion
     return F.to_date(F.col(col_name), "MM/dd/yyyy").alias(col_name)
 
 
 def parse_timestamp(col_name: str) -> Column:
     """Convert a MM/DD/YYYY string column to TimestampType (midnight)."""
+    # Converts to midnight timestamp to match modern schema's TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     return F.to_timestamp(F.col(col_name), "MM/dd/yyyy").alias(col_name)
 
 
@@ -38,6 +41,7 @@ def parse_amount(col_name: str, precision: int = 12, scale: int = 2) -> Column:
 
     Examples: ``"285,000"`` → 285000.00, ``"1,487.02"`` → 1487.02
     """
+    # Strip commas used as thousands separators (e.g. "285,000" → "285000") then cast
     return (
         F.regexp_replace(F.col(col_name), ",", "")
         .cast(DecimalType(precision, scale))
@@ -64,6 +68,8 @@ def parse_percent(col_name: str, precision: int = 5, scale: int = 2) -> Column:
 # Status code expansion
 # ---------------------------------------------------------------------------
 
+# Mapping dictionaries for expanding legacy 2-3 character status abbreviations
+# to human-readable values in the modern schema
 LOAN_STATUS_MAP = {
     "ACT": "ACTIVE",
     "CLO": "CLOSED",
@@ -110,12 +116,14 @@ def expand_status(col_name: str, mapping: dict, alias: str | None = None) -> Col
     quality framework can detect them.
     """
     expr = F.col(col_name)
+    # Build a chained CASE WHEN expression from the mapping dictionary
     case_expr = F.when(expr.isNull(), F.lit(None))
     for code, label in mapping.items():
         if isinstance(label, bool):
             case_expr = case_expr.when(expr == code, F.lit(label))
         else:
             case_expr = case_expr.when(expr == code, F.lit(label))
+    # Preserve unrecognized codes with UNKNOWN: prefix for quality framework detection
     case_expr = case_expr.otherwise(F.concat(F.lit("UNKNOWN:"), expr))
     return case_expr.alias(alias or col_name)
 
