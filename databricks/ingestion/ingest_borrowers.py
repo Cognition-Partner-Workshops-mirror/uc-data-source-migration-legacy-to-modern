@@ -12,7 +12,6 @@ Usage (Databricks notebook or spark-submit):
 """
 
 import logging
-import sys
 from argparse import ArgumentParser
 
 from pyspark.sql import SparkSession, DataFrame
