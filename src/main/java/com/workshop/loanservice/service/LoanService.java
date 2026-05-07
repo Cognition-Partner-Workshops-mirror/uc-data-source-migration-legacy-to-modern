@@ -11,9 +11,12 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -29,6 +32,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class LoanService {
+
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
 
     private final LegacyBorrowerRepository borrowerRepository;
     private final LegacyLoanAccountRepository loanAccountRepository;
@@ -50,8 +55,13 @@ public class LoanService {
                 .stream()
                 .collect(Collectors.toMap(LegacyLoanProduct::getProductCode, p -> p));
 
+        Map<String, LegacyBorrower> borrowers = borrowerRepository.findAll()
+                .stream()
+                .collect(Collectors.toMap(LegacyBorrower::getBorrowerId, b -> b));
+
         return loanAccountRepository.findAll().stream()
-                .map(acct -> toLoanSummary(acct, products.get(acct.getProductCode())))
+                .map(acct -> toLoanSummary(acct, products.get(acct.getProductCode()),
+                        borrowers.get(acct.getBorrowerId())))
                 .collect(Collectors.toList());
     }
 
@@ -60,7 +70,8 @@ public class LoanService {
                 .orElseThrow(() -> new RuntimeException("Loan not found: " + loanAccountNumber));
         LegacyLoanProduct product = loanProductRepository.findById(acct.getProductCode())
                 .orElse(null);
-        return toLoanSummary(acct, product);
+        LegacyBorrower borrower = borrowerRepository.findById(acct.getBorrowerId()).orElse(null);
+        return toLoanSummary(acct, product, borrower);
     }
 
     public List<BorrowerDto> getAllBorrowers() {
@@ -78,9 +89,13 @@ public class LoanService {
         Map<String, LegacyLoanProduct> products = loanProductRepository.findAll()
                 .stream()
                 .collect(Collectors.toMap(LegacyLoanProduct::getProductCode, p -> p));
+        Map<String, LegacyBorrower> borrowers = borrowerRepository.findAll()
+                .stream()
+                .collect(Collectors.toMap(LegacyBorrower::getBorrowerId, b -> b));
         List<LoanSummaryDto> loans = loanAccountRepository.findByBorrowerId(borrowerId)
                 .stream()
-                .map(acct -> toLoanSummary(acct, products.get(acct.getProductCode())))
+                .map(acct -> toLoanSummary(acct, products.get(acct.getProductCode()),
+                        borrowers.get(acct.getBorrowerId())))
                 .collect(Collectors.toList());
         dto.setLoans(loans);
 
@@ -100,68 +115,94 @@ public class LoanService {
     // to proper types. After migration, these should be simplified or removed.
     // =========================================================================
 
-    private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
+    private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product,
+                                          LegacyBorrower masterBorrower) {
+        String id = acct.getLoanAccountNumber();
         LoanSummaryDto dto = new LoanSummaryDto();
-        dto.setLoanAccountNumber(acct.getLoanAccountNumber());
-        dto.setBorrowerName(acct.getBorrowerFirstName() + " " + acct.getBorrowerLastName());
+        dto.setLoanAccountNumber(id);
+        String firstName = acct.getBorrowerFirstName() != null ? acct.getBorrowerFirstName() : "Unknown";
+        String lastName = acct.getBorrowerLastName() != null ? acct.getBorrowerLastName() : "Unknown";
+        dto.setBorrowerName(firstName + " " + lastName);
         dto.setProductDescription(product != null ? product.getDescription() : acct.getProductCode());
-        dto.setOriginalAmount(parseLegacyAmount(acct.getOriginalAmount()));
-        dto.setCurrentBalance(parseLegacyAmount(acct.getCurrentBalance()));
-        dto.setInterestRate(parseLegacyDecimal(acct.getInterestRate()));
-        dto.setMonthlyPayment(parseLegacyAmount(acct.getMonthlyPayment()));
+        dto.setOriginalAmount(LegacyDataValidator.parseAmount(acct.getOriginalAmount(), "LN_ORIG_AMT", id));
+        dto.setCurrentBalance(LegacyDataValidator.parseAmount(acct.getCurrentBalance(), "LN_CURR_BAL", id));
+        dto.setInterestRate(LegacyDataValidator.parseDecimal(acct.getInterestRate(), "LN_INT_RT", id));
+        dto.setMonthlyPayment(LegacyDataValidator.parseAmount(acct.getMonthlyPayment(), "LN_PMT_AMT", id));
         dto.setStatus(expandStatusCode(acct.getStatusCode()));
-        dto.setOriginationDate(acct.getOriginationDate());
+        dto.setOriginationDate(LegacyDataValidator.parseDate(acct.getOriginationDate(), "LN_ORIG_DT", id));
         dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
                 + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
         dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
+
+        List<String> warnings = new ArrayList<>();
+
+        warnings.addAll(LegacyDataValidator.validateLoanStatusConsistency(
+                id, acct.getStatusCode(), acct.getDelinquencyDays()));
+
+        String borrowerWarning = LegacyDataValidator.validateBorrowerReference(
+                id, acct.getBorrowerId(), masterBorrower != null);
+        if (borrowerWarning != null) warnings.add(borrowerWarning);
+
+        String productWarning = LegacyDataValidator.validateProductReference(
+                id, acct.getProductCode(), product != null);
+        if (productWarning != null) warnings.add(productWarning);
+
+        if (masterBorrower != null) {
+            String nameWarning = LegacyDataValidator.validateDenormalizedBorrowerName(
+                    id, acct.getBorrowerFirstName(), acct.getBorrowerLastName(),
+                    masterBorrower.getFirstName(), masterBorrower.getLastName());
+            if (nameWarning != null) warnings.add(nameWarning);
+        }
+
+        if (!warnings.isEmpty()) dto.setDataQualityWarnings(warnings);
+
         return dto;
     }
 
     private BorrowerDto toBorrowerDto(LegacyBorrower borrower) {
+        String id = borrower.getBorrowerId();
         BorrowerDto dto = new BorrowerDto();
-        dto.setId(borrower.getBorrowerId());
+        dto.setId(id);
         String middle = borrower.getMiddleInitial() != null ? " " + borrower.getMiddleInitial() + "." : "";
         dto.setFullName(borrower.getFirstName() + middle + " " + borrower.getLastName());
         dto.setEmail(borrower.getEmail());
         dto.setPhone(borrower.getPhoneNumber());
         dto.setCity(borrower.getCity());
         dto.setState(borrower.getStateCode());
-        dto.setCreditScore(parseLegacyInteger(borrower.getCreditScore()));
+        dto.setCreditScore(LegacyDataValidator.parseInteger(borrower.getCreditScore(), "BORR_CRDT_SCR", id));
         dto.setEmploymentStatus(borrower.getEmploymentStatus());
+        dto.setAnnualIncome(LegacyDataValidator.parseAmount(borrower.getAnnualIncome(), "BORR_ANN_INCM", id));
         return dto;
     }
 
     private PaymentDto toPaymentDto(LegacyPayment pmt) {
+        String id = pmt.getPaymentSequenceNumber();
         PaymentDto dto = new PaymentDto();
-        dto.setPaymentId(pmt.getPaymentSequenceNumber());
+        dto.setPaymentId(id);
         dto.setLoanAccountNumber(pmt.getLoanAccountNumber());
-        dto.setPaymentDate(pmt.getPaymentDate());
-        dto.setTotalAmount(parseLegacyAmount(pmt.getTotalAmount()));
-        dto.setPrincipalAmount(parseLegacyAmount(pmt.getPrincipalAmount()));
-        dto.setInterestAmount(parseLegacyAmount(pmt.getInterestAmount()));
-        dto.setEscrowAmount(parseLegacyAmount(pmt.getEscrowAmount()));
-        dto.setLateFee(parseLegacyAmount(pmt.getLateFee()));
+        dto.setPaymentDate(LegacyDataValidator.parseDate(pmt.getPaymentDate(), "PMT_DT", id));
+        BigDecimal total = LegacyDataValidator.parseAmount(pmt.getTotalAmount(), "PMT_AMT", id);
+        BigDecimal principal = LegacyDataValidator.parseAmount(pmt.getPrincipalAmount(), "PMT_PRIN_AMT", id);
+        BigDecimal interest = LegacyDataValidator.parseAmount(pmt.getInterestAmount(), "PMT_INT_AMT", id);
+        BigDecimal escrow = LegacyDataValidator.parseAmount(pmt.getEscrowAmount(), "PMT_ESCROW_AMT", id);
+        BigDecimal lateFee = LegacyDataValidator.parseAmount(pmt.getLateFee(), "PMT_LATE_FEE", id);
+        dto.setTotalAmount(total);
+        dto.setPrincipalAmount(principal);
+        dto.setInterestAmount(interest);
+        dto.setEscrowAmount(escrow);
+        dto.setLateFee(lateFee);
         dto.setType(expandPaymentType(pmt.getTypeCode()));
         dto.setStatus(expandPaymentStatus(pmt.getStatusCode()));
+
+        List<String> warnings = new ArrayList<>();
+        warnings.addAll(LegacyDataValidator.validatePaymentComponents(
+                id, total, principal, interest, escrow, lateFee));
+        String timingWarning = LegacyDataValidator.validatePaymentTiming(
+                id, pmt.getPaymentDate(), pmt.getReceivedDate(), lateFee);
+        if (timingWarning != null) warnings.add(timingWarning);
+        if (!warnings.isEmpty()) dto.setDataQualityWarnings(warnings);
+
         return dto;
-    }
-
-    /**
-     * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
-     */
-    private BigDecimal parseLegacyAmount(String amount) {
-        if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
-    }
-
-    private BigDecimal parseLegacyDecimal(String value) {
-        if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
-    }
-
-    private Integer parseLegacyInteger(String value) {
-        if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
     }
 
     private String expandStatusCode(String code) {
