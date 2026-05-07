@@ -147,6 +147,8 @@ def expand_status_column(
     """
     Expand abbreviated status codes to full descriptions using a mapping dict.
 
+    NULL input is preserved as NULL.
+    Empty string is treated as NULL (missing data).
     Unknown codes are preserved as-is with a '_UNKNOWN' suffix for visibility.
     """
     target_name = alias or col_name
@@ -154,9 +156,15 @@ def expand_status_column(
         *[item for pair in mapping.items() for item in (F.lit(pair[0]), F.lit(pair[1]))]
     )
     return (
-        F.coalesce(
-            mapping_expr[F.upper(F.trim(F.col(col_name)))],
-            F.concat(F.col(col_name), F.lit("_UNKNOWN")),
+        F.when(
+            F.col(col_name).isNull() | (F.trim(F.col(col_name)) == F.lit("")),
+            F.lit(None).cast("string"),
+        )
+        .otherwise(
+            F.coalesce(
+                mapping_expr[F.upper(F.trim(F.col(col_name)))],
+                F.concat(F.trim(F.col(col_name)), F.lit("_UNKNOWN")),
+            )
         )
         .alias(target_name)
     )
@@ -165,10 +173,12 @@ def expand_status_column(
 def expand_boolean_status(col_name: str, alias: Optional[str] = None) -> Column:
     """
     Convert status code to boolean (ACT -> true, anything else -> false).
+    NULL input is preserved as NULL (not defaulted to false).
     """
     target_name = alias or col_name
     return (
-        F.when(F.upper(F.trim(F.col(col_name))) == "ACT", F.lit(True))
+        F.when(F.col(col_name).isNull(), F.lit(None).cast("boolean"))
+        .when(F.upper(F.trim(F.col(col_name))) == "ACT", F.lit(True))
         .otherwise(F.lit(False))
         .alias(target_name)
     )
