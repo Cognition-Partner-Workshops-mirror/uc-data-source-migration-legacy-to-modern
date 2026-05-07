@@ -16,6 +16,7 @@ public class BorrowerDto {
     private String state;
     private Integer creditScore;
     private String employmentStatus;
+    private String status;
     private List<LoanSummaryDto> loans;
 
     public String getId() { return id; }
@@ -34,6 +35,8 @@ public class BorrowerDto {
     public void setCreditScore(Integer creditScore) { this.creditScore = creditScore; }
     public String getEmploymentStatus() { return employmentStatus; }
     public void setEmploymentStatus(String employmentStatus) { this.employmentStatus = employmentStatus; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
     public List<LoanSummaryDto> getLoans() { return loans; }
     public void setLoans(List<LoanSummaryDto> loans) { this.loans = loans; }
 }
