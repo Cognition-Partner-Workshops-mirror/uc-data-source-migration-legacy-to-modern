@@ -1,5 +1,7 @@
 package com.workshop.loanservice.dto;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -16,7 +18,9 @@ public class BorrowerDto {
     private String state;
     private Integer creditScore;
     private String employmentStatus;
+    private BigDecimal annualIncome;
     private List<LoanSummaryDto> loans;
+    private List<String> dataQualityWarnings = new ArrayList<>();
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -36,4 +40,9 @@ public class BorrowerDto {
     public void setEmploymentStatus(String employmentStatus) { this.employmentStatus = employmentStatus; }
     public List<LoanSummaryDto> getLoans() { return loans; }
     public void setLoans(List<LoanSummaryDto> loans) { this.loans = loans; }
+    public BigDecimal getAnnualIncome() { return annualIncome; }
+    public void setAnnualIncome(BigDecimal annualIncome) { this.annualIncome = annualIncome; }
+    public List<String> getDataQualityWarnings() { return dataQualityWarnings; }
+    public void setDataQualityWarnings(List<String> dataQualityWarnings) { this.dataQualityWarnings = dataQualityWarnings; }
+    public void addDataQualityWarning(String warning) { this.dataQualityWarnings.add(warning); }
 }

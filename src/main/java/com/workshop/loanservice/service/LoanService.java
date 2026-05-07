@@ -11,9 +11,15 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.validation.DataQualityValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -22,13 +28,15 @@ import java.util.stream.Collectors;
  * Service layer that reads from legacy tables and translates
  * cryptic legacy fields into clean DTOs.
  *
- * MIGRATION TASK: This service contains all the translation logic
- * between legacy string-typed fields and proper Java types.
- * When switching data sources, this layer needs to be updated
- * (or replaced) to read from the modern schema.
+ * Data quality validation is applied during translation to catch
+ * anomalies at ingestion time rather than letting them propagate
+ * to API consumers as runtime errors or silent data corruption.
  */
 @Service
 public class LoanService {
+
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
+    private static final DateTimeFormatter ISO_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private final LegacyBorrowerRepository borrowerRepository;
     private final LegacyLoanAccountRepository loanAccountRepository;
@@ -88,80 +96,203 @@ public class LoanService {
     }
 
     public List<PaymentDto> getPaymentsByLoan(String loanAccountNumber) {
-        return paymentRepository.findByLoanAccountNumberOrderByPaymentDateDesc(loanAccountNumber)
+        List<PaymentDto> payments = paymentRepository.findByLoanAccountNumberOrderByPaymentDateDesc(loanAccountNumber)
                 .stream()
                 .map(this::toPaymentDto)
                 .collect(Collectors.toList());
+
+        // Re-sort by parsed date (chronological descending) to fix lexicographic VARCHAR sorting
+        payments.sort(Comparator.comparing(
+                (PaymentDto p) -> parsePaymentDateForSort(p.getPaymentDate()),
+                Comparator.nullsLast(Comparator.reverseOrder())));
+
+        return payments;
     }
 
     // =========================================================================
-    // LEGACY TRANSLATION METHODS
-    // These methods handle the messy conversion from legacy string fields
-    // to proper types. After migration, these should be simplified or removed.
+    // LEGACY TRANSLATION METHODS — with data quality validation
     // =========================================================================
 
     private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
+        String id = acct.getLoanAccountNumber();
         LoanSummaryDto dto = new LoanSummaryDto();
-        dto.setLoanAccountNumber(acct.getLoanAccountNumber());
-        dto.setBorrowerName(acct.getBorrowerFirstName() + " " + acct.getBorrowerLastName());
-        dto.setProductDescription(product != null ? product.getDescription() : acct.getProductCode());
-        dto.setOriginalAmount(parseLegacyAmount(acct.getOriginalAmount()));
-        dto.setCurrentBalance(parseLegacyAmount(acct.getCurrentBalance()));
-        dto.setInterestRate(parseLegacyDecimal(acct.getInterestRate()));
-        dto.setMonthlyPayment(parseLegacyAmount(acct.getMonthlyPayment()));
+        dto.setLoanAccountNumber(id);
+
+        // Validate required fields and build borrower name safely
+        String firstName = acct.getBorrowerFirstName();
+        String lastName = acct.getBorrowerLastName();
+        if (!DataQualityValidator.isRequiredFieldPresent(firstName, "borrowerFirstName", id)) {
+            dto.addDataQualityWarning("Missing borrower first name");
+            firstName = "Unknown";
+        }
+        if (!DataQualityValidator.isRequiredFieldPresent(lastName, "borrowerLastName", id)) {
+            dto.addDataQualityWarning("Missing borrower last name");
+            lastName = "Unknown";
+        }
+        dto.setBorrowerName(firstName + " " + lastName);
+
+        // Product validation
+        if (product != null) {
+            dto.setProductDescription(product.getDescription());
+        } else {
+            dto.setProductDescription(acct.getProductCode());
+            dto.addDataQualityWarning("Product code '" + acct.getProductCode() + "' not found in product table (orphaned reference)");
+        }
+
+        // Validated numeric parsing
+        dto.setOriginalAmount(DataQualityValidator.parseAmount(acct.getOriginalAmount(), "originalAmount", id));
+        dto.setCurrentBalance(DataQualityValidator.parseAmount(acct.getCurrentBalance(), "currentBalance", id));
+        dto.setInterestRate(DataQualityValidator.parseDecimal(acct.getInterestRate(), "interestRate", id));
+        dto.setMonthlyPayment(DataQualityValidator.parseAmount(acct.getMonthlyPayment(), "monthlyPayment", id));
+
+        if (dto.getOriginalAmount() == null) dto.addDataQualityWarning("Unparseable original amount: " + acct.getOriginalAmount());
+        if (dto.getCurrentBalance() == null) dto.addDataQualityWarning("Unparseable current balance: " + acct.getCurrentBalance());
+        if (dto.getInterestRate() == null) dto.addDataQualityWarning("Unparseable interest rate: " + acct.getInterestRate());
+        if (dto.getMonthlyPayment() == null) dto.addDataQualityWarning("Unparseable monthly payment: " + acct.getMonthlyPayment());
+
+        // Status validation
+        DataQualityValidator.isValidStatusCode(acct.getStatusCode(),
+                DataQualityValidator.getValidLoanStatuses(), "loanStatus", id);
         dto.setStatus(expandStatusCode(acct.getStatusCode()));
-        dto.setOriginationDate(acct.getOriginationDate());
-        dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
-                + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
+
+        // Date validation — parse and normalize to ISO format
+        LocalDate origDate = DataQualityValidator.parseDate(acct.getOriginationDate(), "originationDate", id);
+        if (origDate != null) {
+            dto.setOriginationDate(origDate.format(ISO_DATE));
+        } else {
+            dto.setOriginationDate(acct.getOriginationDate());
+            if (acct.getOriginationDate() != null && !acct.getOriginationDate().isBlank()) {
+                dto.addDataQualityWarning("Unparseable origination date: " + acct.getOriginationDate());
+            }
+        }
+
+        // Property address with null safety
+        String propAddr = safeString(acct.getPropertyAddress());
+        String propCity = safeString(acct.getPropertyCity());
+        String propState = safeString(acct.getPropertyState());
+        String propZip = safeString(acct.getPropertyZip());
+        dto.setPropertyAddress(propAddr + ", " + propCity + ", " + propState + " " + propZip);
         dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
+
+        // Business rule validation
+        List<String> statusWarnings = DataQualityValidator.validateLoanStatusConsistency(
+                acct.getStatusCode(), acct.getDelinquencyDays(), id);
+        statusWarnings.forEach(dto::addDataQualityWarning);
+
+        List<String> ltvWarnings = DataQualityValidator.validateLtvPercent(acct.getLtvPercent(), id);
+        ltvWarnings.forEach(dto::addDataQualityWarning);
+
         return dto;
     }
 
     private BorrowerDto toBorrowerDto(LegacyBorrower borrower) {
+        String id = borrower.getBorrowerId();
         BorrowerDto dto = new BorrowerDto();
-        dto.setId(borrower.getBorrowerId());
+        dto.setId(id);
+
+        // Validate required name fields
+        String first = borrower.getFirstName();
+        String last = borrower.getLastName();
+        if (!DataQualityValidator.isRequiredFieldPresent(first, "firstName", id)) {
+            dto.addDataQualityWarning("Missing first name");
+            first = "Unknown";
+        }
+        if (!DataQualityValidator.isRequiredFieldPresent(last, "lastName", id)) {
+            dto.addDataQualityWarning("Missing last name");
+            last = "Unknown";
+        }
+
         String middle = borrower.getMiddleInitial() != null ? " " + borrower.getMiddleInitial() + "." : "";
-        dto.setFullName(borrower.getFirstName() + middle + " " + borrower.getLastName());
+        dto.setFullName(first + middle + " " + last);
         dto.setEmail(borrower.getEmail());
         dto.setPhone(borrower.getPhoneNumber());
         dto.setCity(borrower.getCity());
         dto.setState(borrower.getStateCode());
-        dto.setCreditScore(parseLegacyInteger(borrower.getCreditScore()));
+
+        // Validated credit score
+        Integer creditScore = DataQualityValidator.validateCreditScore(borrower.getCreditScore(), id);
+        dto.setCreditScore(creditScore);
+        if (creditScore == null && borrower.getCreditScore() != null && !borrower.getCreditScore().isBlank()) {
+            dto.addDataQualityWarning("Unparseable credit score: " + borrower.getCreditScore());
+        }
+
         dto.setEmploymentStatus(borrower.getEmploymentStatus());
+
+        // Parse and expose annual income (was previously dropped)
+        BigDecimal income = DataQualityValidator.parseAmount(borrower.getAnnualIncome(), "annualIncome", id);
+        dto.setAnnualIncome(income);
+        if (income == null && borrower.getAnnualIncome() != null && !borrower.getAnnualIncome().isBlank()) {
+            dto.addDataQualityWarning("Unparseable annual income: " + borrower.getAnnualIncome());
+        }
+
+        // Validate borrower status
+        DataQualityValidator.isValidStatusCode(borrower.getStatusCode(),
+                DataQualityValidator.getValidBorrowerStatuses(), "borrowerStatus", id);
+
         return dto;
     }
 
     private PaymentDto toPaymentDto(LegacyPayment pmt) {
+        String id = pmt.getPaymentSequenceNumber();
         PaymentDto dto = new PaymentDto();
-        dto.setPaymentId(pmt.getPaymentSequenceNumber());
+        dto.setPaymentId(id);
         dto.setLoanAccountNumber(pmt.getLoanAccountNumber());
-        dto.setPaymentDate(pmt.getPaymentDate());
-        dto.setTotalAmount(parseLegacyAmount(pmt.getTotalAmount()));
-        dto.setPrincipalAmount(parseLegacyAmount(pmt.getPrincipalAmount()));
-        dto.setInterestAmount(parseLegacyAmount(pmt.getInterestAmount()));
-        dto.setEscrowAmount(parseLegacyAmount(pmt.getEscrowAmount()));
-        dto.setLateFee(parseLegacyAmount(pmt.getLateFee()));
+
+        // Date validation — parse and normalize
+        LocalDate pmtDate = DataQualityValidator.parseDate(pmt.getPaymentDate(), "paymentDate", id);
+        if (pmtDate != null) {
+            dto.setPaymentDate(pmtDate.format(ISO_DATE));
+        } else {
+            dto.setPaymentDate(pmt.getPaymentDate());
+            if (pmt.getPaymentDate() != null && !pmt.getPaymentDate().isBlank()) {
+                dto.addDataQualityWarning("Unparseable payment date: " + pmt.getPaymentDate());
+            }
+        }
+
+        // Validated numeric parsing
+        BigDecimal total = DataQualityValidator.parseAmount(pmt.getTotalAmount(), "totalAmount", id);
+        BigDecimal principal = DataQualityValidator.parseAmount(pmt.getPrincipalAmount(), "principalAmount", id);
+        BigDecimal interest = DataQualityValidator.parseAmount(pmt.getInterestAmount(), "interestAmount", id);
+        BigDecimal escrow = DataQualityValidator.parseAmount(pmt.getEscrowAmount(), "escrowAmount", id);
+        BigDecimal lateFee = DataQualityValidator.parseAmount(pmt.getLateFee(), "lateFee", id);
+
+        dto.setTotalAmount(total);
+        dto.setPrincipalAmount(principal);
+        dto.setInterestAmount(interest);
+        dto.setEscrowAmount(escrow);
+        dto.setLateFee(lateFee);
+
+        // Payment integrity check — components must sum to total
+        List<String> integrityWarnings = DataQualityValidator.validatePaymentIntegrity(
+                total, principal, interest, escrow, lateFee, id);
+        integrityWarnings.forEach(dto::addDataQualityWarning);
+
+        // Status and type validation
+        DataQualityValidator.isValidStatusCode(pmt.getStatusCode(),
+                DataQualityValidator.getValidPaymentStatuses(), "paymentStatus", id);
+        DataQualityValidator.isValidStatusCode(pmt.getTypeCode(),
+                DataQualityValidator.getValidPaymentTypes(), "paymentType", id);
+
         dto.setType(expandPaymentType(pmt.getTypeCode()));
         dto.setStatus(expandPaymentStatus(pmt.getStatusCode()));
         return dto;
     }
 
-    /**
-     * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
-     */
-    private BigDecimal parseLegacyAmount(String amount) {
-        if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
+    // =========================================================================
+    // HELPER METHODS
+    // =========================================================================
+
+    private LocalDate parsePaymentDateForSort(String dateStr) {
+        if (dateStr == null || dateStr.isBlank()) return null;
+        try {
+            return LocalDate.parse(dateStr, ISO_DATE);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
-    private BigDecimal parseLegacyDecimal(String value) {
-        if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
-    }
-
-    private Integer parseLegacyInteger(String value) {
-        if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
+    private String safeString(String value) {
+        return value != null ? value : "";
     }
 
     private String expandStatusCode(String code) {
