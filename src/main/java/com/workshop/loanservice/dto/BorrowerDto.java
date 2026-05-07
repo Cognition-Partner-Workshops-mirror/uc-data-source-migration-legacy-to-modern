@@ -1,5 +1,6 @@
 package com.workshop.loanservice.dto;
 
+import com.workshop.loanservice.validation.DataQualityWarning;
 import java.util.List;
 
 /**
@@ -17,6 +18,7 @@ public class BorrowerDto {
     private Integer creditScore;
     private String employmentStatus;
     private List<LoanSummaryDto> loans;
+    private List<DataQualityWarning> dataQualityWarnings;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -36,4 +38,6 @@ public class BorrowerDto {
     public void setEmploymentStatus(String employmentStatus) { this.employmentStatus = employmentStatus; }
     public List<LoanSummaryDto> getLoans() { return loans; }
     public void setLoans(List<LoanSummaryDto> loans) { this.loans = loans; }
+    public List<DataQualityWarning> getDataQualityWarnings() { return dataQualityWarnings; }
+    public void setDataQualityWarnings(List<DataQualityWarning> dataQualityWarnings) { this.dataQualityWarnings = dataQualityWarnings; }
 }
