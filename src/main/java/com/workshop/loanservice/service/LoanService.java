@@ -176,13 +176,19 @@ public class LoanService {
         dto.setType(expandPaymentType(pmt.getTypeCode()));
         dto.setStatus(expandPaymentStatus(pmt.getStatusCode()));
 
-        BigDecimal componentSum = dto.getPrincipalAmount()
-                .add(dto.getInterestAmount())
-                .add(dto.getEscrowAmount())
-                .add(dto.getLateFee());
-        BigDecimal diff = componentSum.subtract(dto.getTotalAmount()).abs();
-        if (diff.compareTo(new BigDecimal("0.01")) > 0) {
-            dto.setRecalculatedTotal(componentSum);
+        BigDecimal safeTotal = safeParseAmount(pmt.getTotalAmount());
+        BigDecimal safePrincipal = safeParseAmount(pmt.getPrincipalAmount());
+        BigDecimal safeInterest = safeParseAmount(pmt.getInterestAmount());
+        BigDecimal safeEscrow = safeParseAmount(pmt.getEscrowAmount());
+        BigDecimal safeLateFee = safeParseAmount(pmt.getLateFee());
+
+        if (safeTotal != null && safePrincipal != null && safeInterest != null
+                && safeEscrow != null && safeLateFee != null) {
+            BigDecimal componentSum = safePrincipal.add(safeInterest).add(safeEscrow).add(safeLateFee);
+            BigDecimal diff = componentSum.subtract(safeTotal).abs();
+            if (diff.compareTo(new BigDecimal("0.01")) > 0) {
+                dto.setRecalculatedTotal(componentSum);
+            }
         }
 
         dto.setDataQualityWarnings(toWarningStrings(validation));
@@ -223,6 +229,17 @@ public class LoanService {
         }
     }
 
+    private BigDecimal safeParseAmount(String amount) {
+        if (amount == null || amount.isBlank()) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            return new BigDecimal(amount.replace(",", ""));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     // =========================================================================
     // BUSINESS LOGIC HELPERS
     // =========================================================================
@@ -251,9 +268,18 @@ public class LoanService {
     private String buildPropertyAddress(LegacyLoanAccount acct) {
         StringBuilder sb = new StringBuilder();
         if (acct.getPropertyAddress() != null) sb.append(acct.getPropertyAddress());
-        if (acct.getPropertyCity() != null) sb.append(", ").append(acct.getPropertyCity());
-        if (acct.getPropertyState() != null) sb.append(", ").append(acct.getPropertyState());
-        if (acct.getPropertyZip() != null) sb.append(" ").append(acct.getPropertyZip());
+        if (acct.getPropertyCity() != null) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(acct.getPropertyCity());
+        }
+        if (acct.getPropertyState() != null) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(acct.getPropertyState());
+        }
+        if (acct.getPropertyZip() != null) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append(acct.getPropertyZip());
+        }
         return sb.toString();
     }
 
