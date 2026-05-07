@@ -11,11 +11,18 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.validation.DataQualityIssue;
+import com.workshop.loanservice.validation.DataQualityValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -30,19 +37,24 @@ import java.util.stream.Collectors;
 @Service
 public class LoanService {
 
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
+
     private final LegacyBorrowerRepository borrowerRepository;
     private final LegacyLoanAccountRepository loanAccountRepository;
     private final LegacyLoanProductRepository loanProductRepository;
     private final LegacyPaymentRepository paymentRepository;
+    private final DataQualityValidator validator;
 
     public LoanService(LegacyBorrowerRepository borrowerRepository,
                        LegacyLoanAccountRepository loanAccountRepository,
                        LegacyLoanProductRepository loanProductRepository,
-                       LegacyPaymentRepository paymentRepository) {
+                       LegacyPaymentRepository paymentRepository,
+                       DataQualityValidator validator) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanProductRepository = loanProductRepository;
         this.paymentRepository = paymentRepository;
+        this.validator = validator;
     }
 
     public List<LoanSummaryDto> getAllLoans() {
@@ -88,8 +100,14 @@ public class LoanService {
     }
 
     public List<PaymentDto> getPaymentsByLoan(String loanAccountNumber) {
-        return paymentRepository.findByLoanAccountNumberOrderByPaymentDateDesc(loanAccountNumber)
+        Set<String> validLoanIds = loanAccountRepository.findAll().stream()
+                .map(LegacyLoanAccount::getLoanAccountNumber)
+                .collect(Collectors.toSet());
+
+        return paymentRepository.findByLoanAccountNumber(loanAccountNumber)
                 .stream()
+                .peek(pmt -> logIssues(validator.validatePayment(pmt, validLoanIds)))
+                .sorted(paymentDateDescending())
                 .map(this::toPaymentDto)
                 .collect(Collectors.toList());
     }
@@ -148,20 +166,20 @@ public class LoanService {
 
     /**
      * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
+     * Delegates to DataQualityValidator for safe parsing with error handling.
      */
     private BigDecimal parseLegacyAmount(String amount) {
-        if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
+        BigDecimal result = validator.safeParseAmount(amount);
+        return result != null ? result : BigDecimal.ZERO;
     }
 
     private BigDecimal parseLegacyDecimal(String value) {
-        if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
+        BigDecimal result = validator.safeParseDecimal(value);
+        return result != null ? result : BigDecimal.ZERO;
     }
 
     private Integer parseLegacyInteger(String value) {
-        if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
+        return validator.safeParseInteger(value);
     }
 
     private String expandStatusCode(String code) {
@@ -206,5 +224,30 @@ public class LoanService {
             case "PND" -> "Pending";
             default -> code;
         };
+    }
+
+    /**
+     * Comparator that sorts payments by date descending using proper date parsing.
+     * Falls back to string comparison if dates cannot be parsed.
+     */
+    private Comparator<LegacyPayment> paymentDateDescending() {
+        return (a, b) -> {
+            LocalDate dateA = validator.safeParseLegacyDate(a.getPaymentDate());
+            LocalDate dateB = validator.safeParseLegacyDate(b.getPaymentDate());
+            if (dateA == null && dateB == null) return 0;
+            if (dateA == null) return 1;
+            if (dateB == null) return -1;
+            return dateB.compareTo(dateA);
+        };
+    }
+
+    private void logIssues(List<DataQualityIssue> issues) {
+        for (DataQualityIssue issue : issues) {
+            switch (issue.getSeverity()) {
+                case CRITICAL -> log.error("DATA QUALITY: {}", issue);
+                case HIGH -> log.warn("DATA QUALITY: {}", issue);
+                default -> log.info("DATA QUALITY: {}", issue);
+            }
+        }
     }
 }
