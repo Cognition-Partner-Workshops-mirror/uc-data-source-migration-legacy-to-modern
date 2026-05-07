@@ -11,9 +11,14 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.validation.LegacyDataValidator;
+import com.workshop.loanservice.validation.ValidationResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -30,19 +35,24 @@ import java.util.stream.Collectors;
 @Service
 public class LoanService {
 
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
+
     private final LegacyBorrowerRepository borrowerRepository;
     private final LegacyLoanAccountRepository loanAccountRepository;
     private final LegacyLoanProductRepository loanProductRepository;
     private final LegacyPaymentRepository paymentRepository;
+    private final LegacyDataValidator validator;
 
     public LoanService(LegacyBorrowerRepository borrowerRepository,
                        LegacyLoanAccountRepository loanAccountRepository,
                        LegacyLoanProductRepository loanProductRepository,
-                       LegacyPaymentRepository paymentRepository) {
+                       LegacyPaymentRepository paymentRepository,
+                       LegacyDataValidator validator) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanProductRepository = loanProductRepository;
         this.paymentRepository = paymentRepository;
+        this.validator = validator;
     }
 
     public List<LoanSummaryDto> getAllLoans() {
@@ -50,48 +60,92 @@ public class LoanService {
                 .stream()
                 .collect(Collectors.toMap(LegacyLoanProduct::getProductCode, p -> p));
 
-        return loanAccountRepository.findAll().stream()
-                .map(acct -> toLoanSummary(acct, products.get(acct.getProductCode())))
-                .collect(Collectors.toList());
+        Map<String, LegacyBorrower> borrowers = borrowerRepository.findAll()
+                .stream()
+                .collect(Collectors.toMap(LegacyBorrower::getBorrowerId, b -> b));
+
+        List<LoanSummaryDto> results = new ArrayList<>();
+        for (LegacyLoanAccount acct : loanAccountRepository.findAll()) {
+            LegacyBorrower borrower = borrowers.get(acct.getBorrowerId());
+            ValidationResult vr = validator.validateLoanAccount(acct, borrower);
+            if (vr.hasErrors()) {
+                log.error("Skipping loan {} due to validation errors", acct.getLoanAccountNumber());
+                continue;
+            }
+            results.add(toLoanSummary(acct, products.get(acct.getProductCode())));
+        }
+        return results;
     }
 
     public LoanSummaryDto getLoanById(String loanAccountNumber) {
         LegacyLoanAccount acct = loanAccountRepository.findById(loanAccountNumber)
                 .orElseThrow(() -> new RuntimeException("Loan not found: " + loanAccountNumber));
+        LegacyBorrower borrower = borrowerRepository.findById(acct.getBorrowerId()).orElse(null);
+        ValidationResult vr = validator.validateLoanAccount(acct, borrower);
+        if (vr.hasErrors()) {
+            log.warn("Loan {} has validation errors but returning with warnings",
+                    loanAccountNumber);
+        }
         LegacyLoanProduct product = loanProductRepository.findById(acct.getProductCode())
                 .orElse(null);
         return toLoanSummary(acct, product);
     }
 
     public List<BorrowerDto> getAllBorrowers() {
-        return borrowerRepository.findAll().stream()
-                .map(this::toBorrowerDto)
-                .collect(Collectors.toList());
+        List<BorrowerDto> results = new ArrayList<>();
+        for (LegacyBorrower borrower : borrowerRepository.findAll()) {
+            ValidationResult vr = validator.validateBorrower(borrower);
+            if (vr.hasErrors()) {
+                log.error("Skipping borrower {} due to validation errors",
+                        borrower.getBorrowerId());
+                continue;
+            }
+            results.add(toBorrowerDto(borrower));
+        }
+        return results;
     }
 
     public BorrowerDto getBorrowerById(String borrowerId) {
         LegacyBorrower borrower = borrowerRepository.findById(borrowerId)
                 .orElseThrow(() -> new RuntimeException("Borrower not found: " + borrowerId));
+        validator.validateBorrower(borrower);
         BorrowerDto dto = toBorrowerDto(borrower);
 
-        // Attach loans for this borrower
         Map<String, LegacyLoanProduct> products = loanProductRepository.findAll()
                 .stream()
                 .collect(Collectors.toMap(LegacyLoanProduct::getProductCode, p -> p));
-        List<LoanSummaryDto> loans = loanAccountRepository.findByBorrowerId(borrowerId)
+        Map<String, LegacyBorrower> borrowers = borrowerRepository.findAll()
                 .stream()
-                .map(acct -> toLoanSummary(acct, products.get(acct.getProductCode())))
-                .collect(Collectors.toList());
+                .collect(Collectors.toMap(LegacyBorrower::getBorrowerId, b -> b));
+
+        List<LoanSummaryDto> loans = new ArrayList<>();
+        for (LegacyLoanAccount acct : loanAccountRepository.findByBorrowerId(borrowerId)) {
+            LegacyBorrower acctBorrower = borrowers.get(acct.getBorrowerId());
+            ValidationResult vr = validator.validateLoanAccount(acct, acctBorrower);
+            if (vr.hasErrors()) {
+                log.error("Skipping loan {} for borrower {} due to validation errors",
+                        acct.getLoanAccountNumber(), borrowerId);
+                continue;
+            }
+            loans.add(toLoanSummary(acct, products.get(acct.getProductCode())));
+        }
         dto.setLoans(loans);
 
         return dto;
     }
 
     public List<PaymentDto> getPaymentsByLoan(String loanAccountNumber) {
-        return paymentRepository.findByLoanAccountNumberOrderByPaymentDateDesc(loanAccountNumber)
-                .stream()
-                .map(this::toPaymentDto)
-                .collect(Collectors.toList());
+        List<PaymentDto> results = new ArrayList<>();
+        for (LegacyPayment pmt : paymentRepository
+                .findByLoanAccountNumberOrderByPaymentDateDesc(loanAccountNumber)) {
+            ValidationResult vr = validator.validatePayment(pmt);
+            if (vr.hasErrors()) {
+                log.warn("Payment {} has validation errors — including with warnings",
+                        pmt.getPaymentSequenceNumber());
+            }
+            results.add(toPaymentDto(pmt));
+        }
+        return results;
     }
 
     // =========================================================================
@@ -148,63 +202,105 @@ public class LoanService {
 
     /**
      * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
+     * Strips commas, dollar signs, and whitespace. Returns ZERO with a warning log
+     * for null/blank inputs, and catches NumberFormatException for malformed values.
      */
-    private BigDecimal parseLegacyAmount(String amount) {
-        if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
+    BigDecimal parseLegacyAmount(String amount) {
+        if (amount == null || amount.isBlank()) {
+            log.warn("Null or blank amount field — defaulting to ZERO");
+            return BigDecimal.ZERO;
+        }
+        try {
+            String cleaned = amount.replace(",", "").trim();
+            if (cleaned.startsWith("$")) {
+                cleaned = cleaned.substring(1);
+            }
+            if (cleaned.startsWith("(") && cleaned.endsWith(")")) {
+                cleaned = "-" + cleaned.substring(1, cleaned.length() - 1);
+            }
+            return new BigDecimal(cleaned);
+        } catch (NumberFormatException e) {
+            log.error("Failed to parse amount '{}' — defaulting to ZERO", amount);
+            return BigDecimal.ZERO;
+        }
     }
 
-    private BigDecimal parseLegacyDecimal(String value) {
-        if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
+    BigDecimal parseLegacyDecimal(String value) {
+        if (value == null || value.isBlank()) {
+            log.warn("Null or blank decimal field — defaulting to ZERO");
+            return BigDecimal.ZERO;
+        }
+        try {
+            return new BigDecimal(value.replace(",", "").trim());
+        } catch (NumberFormatException e) {
+            log.error("Failed to parse decimal '{}' — defaulting to ZERO", value);
+            return BigDecimal.ZERO;
+        }
     }
 
-    private Integer parseLegacyInteger(String value) {
+    Integer parseLegacyInteger(String value) {
         if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
+        try {
+            return Integer.parseInt(value.replace(",", "").trim());
+        } catch (NumberFormatException e) {
+            log.error("Failed to parse integer '{}' — returning null", value);
+            return null;
+        }
     }
 
-    private String expandStatusCode(String code) {
+    String expandStatusCode(String code) {
         if (code == null) return "Unknown";
         return switch (code) {
             case "ACT" -> "Active";
             case "CLO" -> "Closed";
             case "DFT" -> "Default";
             case "FRB" -> "Forbearance";
-            default -> code;
+            default -> {
+                log.warn("Unrecognized loan status code '{}' — passing through", code);
+                yield code;
+            }
         };
     }
 
-    private String expandPropertyType(String code) {
+    String expandPropertyType(String code) {
         if (code == null) return "Unknown";
         return switch (code) {
             case "SFR" -> "Single Family Residence";
             case "CND" -> "Condominium";
             case "MFR" -> "Multi-Family Residence";
             case "TWN" -> "Townhouse";
-            default -> code;
+            default -> {
+                log.warn("Unrecognized property type code '{}' — passing through", code);
+                yield code;
+            }
         };
     }
 
-    private String expandPaymentType(String code) {
+    String expandPaymentType(String code) {
         if (code == null) return "Unknown";
         return switch (code) {
             case "REG" -> "Regular";
             case "EXT" -> "Extra";
             case "PRT" -> "Partial";
             case "PRE" -> "Prepayment";
-            default -> code;
+            default -> {
+                log.warn("Unrecognized payment type code '{}' — passing through", code);
+                yield code;
+            }
         };
     }
 
-    private String expandPaymentStatus(String code) {
+    String expandPaymentStatus(String code) {
         if (code == null) return "Unknown";
         return switch (code) {
             case "PST" -> "Posted";
             case "REV" -> "Reversed";
             case "NSF" -> "Non-Sufficient Funds";
             case "PND" -> "Pending";
-            default -> code;
+            default -> {
+                log.warn("Unrecognized payment status code '{}' — passing through", code);
+                yield code;
+            }
         };
     }
 }
