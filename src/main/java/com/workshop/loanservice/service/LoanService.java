@@ -11,6 +11,7 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.validation.LegacyDataValidator;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -103,17 +104,30 @@ public class LoanService {
     private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
         LoanSummaryDto dto = new LoanSummaryDto();
         dto.setLoanAccountNumber(acct.getLoanAccountNumber());
-        dto.setBorrowerName(acct.getBorrowerFirstName() + " " + acct.getBorrowerLastName());
+
+        String firstName = acct.getBorrowerFirstName() != null ? acct.getBorrowerFirstName() : "";
+        String lastName = acct.getBorrowerLastName() != null ? acct.getBorrowerLastName() : "";
+        dto.setBorrowerName((firstName + " " + lastName).trim());
+
         dto.setProductDescription(product != null ? product.getDescription() : acct.getProductCode());
-        dto.setOriginalAmount(parseLegacyAmount(acct.getOriginalAmount()));
-        dto.setCurrentBalance(parseLegacyAmount(acct.getCurrentBalance()));
-        dto.setInterestRate(parseLegacyDecimal(acct.getInterestRate()));
-        dto.setMonthlyPayment(parseLegacyAmount(acct.getMonthlyPayment()));
+        dto.setOriginalAmount(LegacyDataValidator.parseAmount(acct.getOriginalAmount(), "originalAmount"));
+        dto.setCurrentBalance(LegacyDataValidator.parseAmount(acct.getCurrentBalance(), "currentBalance"));
+        dto.setInterestRate(LegacyDataValidator.parseDecimal(acct.getInterestRate(), "interestRate"));
+        dto.setMonthlyPayment(LegacyDataValidator.parseAmount(acct.getMonthlyPayment(), "monthlyPayment"));
         dto.setStatus(expandStatusCode(acct.getStatusCode()));
-        dto.setOriginationDate(acct.getOriginationDate());
-        dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
-                + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
+        dto.setOriginationDate(LegacyDataValidator.validateDateFormat(acct.getOriginationDate(), "originationDate"));
+
+        String propAddr = acct.getPropertyAddress() != null ? acct.getPropertyAddress() : "";
+        String propCity = acct.getPropertyCity() != null ? acct.getPropertyCity() : "";
+        String propState = acct.getPropertyState() != null ? acct.getPropertyState() : "";
+        String propZip = acct.getPropertyZip() != null ? acct.getPropertyZip() : "";
+        dto.setPropertyAddress((propAddr + ", " + propCity + ", " + propState + " " + propZip).trim());
+
         dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
+
+        LegacyDataValidator.validateLoanStatusConsistency(
+                acct.getStatusCode(), acct.getDelinquencyDays(), acct.getLoanAccountNumber());
+
         return dto;
     }
 
@@ -121,12 +135,14 @@ public class LoanService {
         BorrowerDto dto = new BorrowerDto();
         dto.setId(borrower.getBorrowerId());
         String middle = borrower.getMiddleInitial() != null ? " " + borrower.getMiddleInitial() + "." : "";
-        dto.setFullName(borrower.getFirstName() + middle + " " + borrower.getLastName());
+        String first = borrower.getFirstName() != null ? borrower.getFirstName() : "";
+        String last = borrower.getLastName() != null ? borrower.getLastName() : "";
+        dto.setFullName((first + middle + " " + last).trim());
         dto.setEmail(borrower.getEmail());
         dto.setPhone(borrower.getPhoneNumber());
         dto.setCity(borrower.getCity());
         dto.setState(borrower.getStateCode());
-        dto.setCreditScore(parseLegacyInteger(borrower.getCreditScore()));
+        dto.setCreditScore(LegacyDataValidator.parseInteger(borrower.getCreditScore(), "creditScore"));
         dto.setEmploymentStatus(borrower.getEmploymentStatus());
         return dto;
     }
@@ -135,30 +151,43 @@ public class LoanService {
         PaymentDto dto = new PaymentDto();
         dto.setPaymentId(pmt.getPaymentSequenceNumber());
         dto.setLoanAccountNumber(pmt.getLoanAccountNumber());
-        dto.setPaymentDate(pmt.getPaymentDate());
-        dto.setTotalAmount(parseLegacyAmount(pmt.getTotalAmount()));
-        dto.setPrincipalAmount(parseLegacyAmount(pmt.getPrincipalAmount()));
-        dto.setInterestAmount(parseLegacyAmount(pmt.getInterestAmount()));
-        dto.setEscrowAmount(parseLegacyAmount(pmt.getEscrowAmount()));
-        dto.setLateFee(parseLegacyAmount(pmt.getLateFee()));
+        dto.setPaymentDate(LegacyDataValidator.validateDateFormat(pmt.getPaymentDate(), "paymentDate"));
+        BigDecimal total = LegacyDataValidator.parseAmount(pmt.getTotalAmount(), "totalAmount");
+        BigDecimal principal = LegacyDataValidator.parseAmount(pmt.getPrincipalAmount(), "principalAmount");
+        BigDecimal interest = LegacyDataValidator.parseAmount(pmt.getInterestAmount(), "interestAmount");
+        BigDecimal escrow = LegacyDataValidator.parseAmount(pmt.getEscrowAmount(), "escrowAmount");
+        BigDecimal lateFee = LegacyDataValidator.parseAmount(pmt.getLateFee(), "lateFee");
+        dto.setTotalAmount(total);
+        dto.setPrincipalAmount(principal);
+        dto.setInterestAmount(interest);
+        dto.setEscrowAmount(escrow);
+        dto.setLateFee(lateFee);
         dto.setType(expandPaymentType(pmt.getTypeCode()));
         dto.setStatus(expandPaymentStatus(pmt.getStatusCode()));
+
+        List<String> warnings = LegacyDataValidator.validatePaymentComponents(
+                total, principal, interest, escrow, lateFee, pmt.getPaymentSequenceNumber());
+        dto.setWarnings(warnings);
+
         return dto;
     }
 
     /**
      * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
      */
+    @Deprecated
     private BigDecimal parseLegacyAmount(String amount) {
         if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
         return new BigDecimal(amount.replace(",", ""));
     }
 
+    @Deprecated
     private BigDecimal parseLegacyDecimal(String value) {
         if (value == null || value.isBlank()) return BigDecimal.ZERO;
         return new BigDecimal(value.trim());
     }
 
+    @Deprecated
     private Integer parseLegacyInteger(String value) {
         if (value == null || value.isBlank()) return null;
         return Integer.parseInt(value.trim());
