@@ -11,11 +11,17 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.validation.LegacyDataValidator;
+import com.workshop.loanservice.validation.ValidationWarning;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -30,19 +36,24 @@ import java.util.stream.Collectors;
 @Service
 public class LoanService {
 
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
+
     private final LegacyBorrowerRepository borrowerRepository;
     private final LegacyLoanAccountRepository loanAccountRepository;
     private final LegacyLoanProductRepository loanProductRepository;
     private final LegacyPaymentRepository paymentRepository;
+    private final LegacyDataValidator validator;
 
     public LoanService(LegacyBorrowerRepository borrowerRepository,
                        LegacyLoanAccountRepository loanAccountRepository,
                        LegacyLoanProductRepository loanProductRepository,
-                       LegacyPaymentRepository paymentRepository) {
+                       LegacyPaymentRepository paymentRepository,
+                       LegacyDataValidator validator) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanProductRepository = loanProductRepository;
         this.paymentRepository = paymentRepository;
+        this.validator = validator;
     }
 
     public List<LoanSummaryDto> getAllLoans() {
@@ -148,20 +159,61 @@ public class LoanService {
 
     /**
      * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
+     * Uses the validator for safe parsing with error handling.
      */
     private BigDecimal parseLegacyAmount(String amount) {
-        if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
+        return validator.parseAmount(amount, "unknown", "unknown", new ArrayList<>());
     }
 
     private BigDecimal parseLegacyDecimal(String value) {
-        if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
+        return validator.parseDecimal(value, "unknown", "unknown", new ArrayList<>());
     }
 
     private Integer parseLegacyInteger(String value) {
-        if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
+        return validator.parseInteger(value, "unknown", "unknown", new ArrayList<>());
+    }
+
+    /**
+     * Validates all legacy data and returns a list of warnings.
+     * This is the main entry point for data quality checks at ingestion time.
+     */
+    public List<ValidationWarning> validateAllData() {
+        List<ValidationWarning> allWarnings = new ArrayList<>();
+
+        List<LegacyBorrower> borrowers = borrowerRepository.findAll();
+        Set<String> borrowerIds = borrowers.stream()
+                .map(LegacyBorrower::getBorrowerId)
+                .collect(Collectors.toSet());
+        for (LegacyBorrower borrower : borrowers) {
+            allWarnings.addAll(validator.validateBorrower(borrower));
+        }
+
+        Set<String> productCodes = loanProductRepository.findAll().stream()
+                .map(LegacyLoanProduct::getProductCode)
+                .collect(Collectors.toSet());
+
+        List<LegacyLoanAccount> loans = loanAccountRepository.findAll();
+        Set<String> loanAccountNumbers = loans.stream()
+                .map(LegacyLoanAccount::getLoanAccountNumber)
+                .collect(Collectors.toSet());
+        Map<String, LegacyBorrower> borrowerMap = borrowers.stream()
+                .collect(Collectors.toMap(LegacyBorrower::getBorrowerId, b -> b));
+        for (LegacyLoanAccount loan : loans) {
+            allWarnings.addAll(validator.validateLoanAccount(loan, borrowerIds, productCodes));
+            LegacyBorrower borrower = borrowerMap.get(loan.getBorrowerId());
+            allWarnings.addAll(validator.validateDenormalizedBorrowerData(loan, borrower));
+        }
+
+        List<LegacyPayment> payments = paymentRepository.findAll();
+        for (LegacyPayment payment : payments) {
+            allWarnings.addAll(validator.validatePayment(payment, loanAccountNumbers));
+        }
+
+        for (ValidationWarning warning : allWarnings) {
+            log.warn("Data anomaly: {}", warning);
+        }
+
+        return allWarnings;
     }
 
     private String expandStatusCode(String code) {
@@ -206,5 +258,9 @@ public class LoanService {
             case "PND" -> "Pending";
             default -> code;
         };
+    }
+
+    public LegacyDataValidator getValidator() {
+        return validator;
     }
 }
