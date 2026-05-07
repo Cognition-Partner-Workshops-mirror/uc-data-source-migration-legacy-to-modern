@@ -176,7 +176,7 @@ public class LegacyDataValidator {
     }
 
     public BigDecimal calculateLtv(BigDecimal originalAmount, BigDecimal appraisedValue) {
-        if (appraisedValue == null || appraisedValue.compareTo(BigDecimal.ZERO) == 0) {
+        if (originalAmount == null || appraisedValue == null || appraisedValue.compareTo(BigDecimal.ZERO) == 0) {
             return BigDecimal.ZERO;
         }
         return originalAmount

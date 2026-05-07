@@ -329,4 +329,9 @@ class LegacyDataValidatorTest {
     void calculateLtv_nullAppraisedValue() {
         assertEquals(BigDecimal.ZERO, validator.calculateLtv(new BigDecimal("285000"), null));
     }
+
+    @Test
+    void calculateLtv_nullOriginalAmount() {
+        assertEquals(BigDecimal.ZERO, validator.calculateLtv(null, new BigDecimal("345000")));
+    }
 }
