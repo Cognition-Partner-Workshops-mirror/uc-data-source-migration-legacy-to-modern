@@ -11,6 +11,8 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -30,19 +32,24 @@ import java.util.stream.Collectors;
 @Service
 public class LoanService {
 
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
+
     private final LegacyBorrowerRepository borrowerRepository;
     private final LegacyLoanAccountRepository loanAccountRepository;
     private final LegacyLoanProductRepository loanProductRepository;
     private final LegacyPaymentRepository paymentRepository;
+    private final LegacyDataValidator validator;
 
     public LoanService(LegacyBorrowerRepository borrowerRepository,
                        LegacyLoanAccountRepository loanAccountRepository,
                        LegacyLoanProductRepository loanProductRepository,
-                       LegacyPaymentRepository paymentRepository) {
+                       LegacyPaymentRepository paymentRepository,
+                       LegacyDataValidator validator) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanProductRepository = loanProductRepository;
         this.paymentRepository = paymentRepository;
+        this.validator = validator;
     }
 
     public List<LoanSummaryDto> getAllLoans() {
@@ -51,7 +58,10 @@ public class LoanService {
                 .collect(Collectors.toMap(LegacyLoanProduct::getProductCode, p -> p));
 
         return loanAccountRepository.findAll().stream()
-                .map(acct -> toLoanSummary(acct, products.get(acct.getProductCode())))
+                .map(acct -> {
+                    validator.validateLoanAccount(acct);
+                    return toLoanSummary(acct, products.get(acct.getProductCode()));
+                })
                 .collect(Collectors.toList());
     }
 
@@ -65,13 +75,17 @@ public class LoanService {
 
     public List<BorrowerDto> getAllBorrowers() {
         return borrowerRepository.findAll().stream()
-                .map(this::toBorrowerDto)
+                .map(b -> {
+                    validator.validateBorrower(b);
+                    return toBorrowerDto(b);
+                })
                 .collect(Collectors.toList());
     }
 
     public BorrowerDto getBorrowerById(String borrowerId) {
         LegacyBorrower borrower = borrowerRepository.findById(borrowerId)
                 .orElseThrow(() -> new RuntimeException("Borrower not found: " + borrowerId));
+        validator.validateBorrower(borrower);
         BorrowerDto dto = toBorrowerDto(borrower);
 
         // Attach loans for this borrower
@@ -90,7 +104,10 @@ public class LoanService {
     public List<PaymentDto> getPaymentsByLoan(String loanAccountNumber) {
         return paymentRepository.findByLoanAccountNumberOrderByPaymentDateDesc(loanAccountNumber)
                 .stream()
-                .map(this::toPaymentDto)
+                .map(pmt -> {
+                    validator.validatePayment(pmt);
+                    return toPaymentDto(pmt);
+                })
                 .collect(Collectors.toList());
     }
 
@@ -103,16 +120,21 @@ public class LoanService {
     private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
         LoanSummaryDto dto = new LoanSummaryDto();
         dto.setLoanAccountNumber(acct.getLoanAccountNumber());
-        dto.setBorrowerName(acct.getBorrowerFirstName() + " " + acct.getBorrowerLastName());
+        String firstName = acct.getBorrowerFirstName() != null ? acct.getBorrowerFirstName() : "";
+        String lastName = acct.getBorrowerLastName() != null ? acct.getBorrowerLastName() : "";
+        dto.setBorrowerName((firstName + " " + lastName).trim());
         dto.setProductDescription(product != null ? product.getDescription() : acct.getProductCode());
-        dto.setOriginalAmount(parseLegacyAmount(acct.getOriginalAmount()));
-        dto.setCurrentBalance(parseLegacyAmount(acct.getCurrentBalance()));
-        dto.setInterestRate(parseLegacyDecimal(acct.getInterestRate()));
-        dto.setMonthlyPayment(parseLegacyAmount(acct.getMonthlyPayment()));
+        dto.setOriginalAmount(validator.safeParseAmount(acct.getOriginalAmount()));
+        dto.setCurrentBalance(validator.safeParseAmount(acct.getCurrentBalance()));
+        dto.setInterestRate(validator.safeParseDecimal(acct.getInterestRate()));
+        dto.setMonthlyPayment(validator.safeParseAmount(acct.getMonthlyPayment()));
         dto.setStatus(expandStatusCode(acct.getStatusCode()));
         dto.setOriginationDate(acct.getOriginationDate());
-        dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
-                + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
+        String addr = acct.getPropertyAddress() != null ? acct.getPropertyAddress() : "";
+        String city = acct.getPropertyCity() != null ? acct.getPropertyCity() : "";
+        String state = acct.getPropertyState() != null ? acct.getPropertyState() : "";
+        String zip = acct.getPropertyZip() != null ? acct.getPropertyZip() : "";
+        dto.setPropertyAddress(addr + ", " + city + ", " + state + " " + zip);
         dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
         return dto;
     }
@@ -121,12 +143,14 @@ public class LoanService {
         BorrowerDto dto = new BorrowerDto();
         dto.setId(borrower.getBorrowerId());
         String middle = borrower.getMiddleInitial() != null ? " " + borrower.getMiddleInitial() + "." : "";
-        dto.setFullName(borrower.getFirstName() + middle + " " + borrower.getLastName());
+        String first = borrower.getFirstName() != null ? borrower.getFirstName() : "";
+        String last = borrower.getLastName() != null ? borrower.getLastName() : "";
+        dto.setFullName((first + middle + " " + last).trim());
         dto.setEmail(borrower.getEmail());
         dto.setPhone(borrower.getPhoneNumber());
         dto.setCity(borrower.getCity());
         dto.setState(borrower.getStateCode());
-        dto.setCreditScore(parseLegacyInteger(borrower.getCreditScore()));
+        dto.setCreditScore(validator.safeParseInteger(borrower.getCreditScore()));
         dto.setEmploymentStatus(borrower.getEmploymentStatus());
         return dto;
     }
@@ -136,32 +160,14 @@ public class LoanService {
         dto.setPaymentId(pmt.getPaymentSequenceNumber());
         dto.setLoanAccountNumber(pmt.getLoanAccountNumber());
         dto.setPaymentDate(pmt.getPaymentDate());
-        dto.setTotalAmount(parseLegacyAmount(pmt.getTotalAmount()));
-        dto.setPrincipalAmount(parseLegacyAmount(pmt.getPrincipalAmount()));
-        dto.setInterestAmount(parseLegacyAmount(pmt.getInterestAmount()));
-        dto.setEscrowAmount(parseLegacyAmount(pmt.getEscrowAmount()));
-        dto.setLateFee(parseLegacyAmount(pmt.getLateFee()));
+        dto.setTotalAmount(validator.safeParseAmount(pmt.getTotalAmount()));
+        dto.setPrincipalAmount(validator.safeParseAmount(pmt.getPrincipalAmount()));
+        dto.setInterestAmount(validator.safeParseAmount(pmt.getInterestAmount()));
+        dto.setEscrowAmount(validator.safeParseAmount(pmt.getEscrowAmount()));
+        dto.setLateFee(validator.safeParseAmount(pmt.getLateFee()));
         dto.setType(expandPaymentType(pmt.getTypeCode()));
         dto.setStatus(expandPaymentStatus(pmt.getStatusCode()));
         return dto;
-    }
-
-    /**
-     * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
-     */
-    private BigDecimal parseLegacyAmount(String amount) {
-        if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
-    }
-
-    private BigDecimal parseLegacyDecimal(String value) {
-        if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
-    }
-
-    private Integer parseLegacyInteger(String value) {
-        if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
     }
 
     private String expandStatusCode(String code) {
@@ -171,7 +177,10 @@ public class LoanService {
             case "CLO" -> "Closed";
             case "DFT" -> "Default";
             case "FRB" -> "Forbearance";
-            default -> code;
+            default -> {
+                log.warn("Unrecognized loan status code: '{}'", code);
+                yield code;
+            }
         };
     }
 
@@ -182,7 +191,10 @@ public class LoanService {
             case "CND" -> "Condominium";
             case "MFR" -> "Multi-Family Residence";
             case "TWN" -> "Townhouse";
-            default -> code;
+            default -> {
+                log.warn("Unrecognized property type code: '{}'", code);
+                yield code;
+            }
         };
     }
 
@@ -193,7 +205,10 @@ public class LoanService {
             case "EXT" -> "Extra";
             case "PRT" -> "Partial";
             case "PRE" -> "Prepayment";
-            default -> code;
+            default -> {
+                log.warn("Unrecognized payment type code: '{}'", code);
+                yield code;
+            }
         };
     }
 
@@ -204,7 +219,10 @@ public class LoanService {
             case "REV" -> "Reversed";
             case "NSF" -> "Non-Sufficient Funds";
             case "PND" -> "Pending";
-            default -> code;
+            default -> {
+                log.warn("Unrecognized payment status code: '{}'", code);
+                yield code;
+            }
         };
     }
 }
