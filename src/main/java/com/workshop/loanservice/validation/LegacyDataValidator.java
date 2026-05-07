@@ -173,7 +173,9 @@ public class LegacyDataValidator {
         parseDate(borrower.getCreatedDate(), id, "BORR_CRET_DT", warnings);
         parseDate(borrower.getUpdatedDate(), id, "BORR_UPDT_DT", warnings);
 
-        Integer creditScore = parseInteger(borrower.getCreditScore(), id, "BORR_CRDT_SCR", warnings);
+        // Use temporary list to avoid duplicate warnings — creditScore is re-parsed in toBorrowerDto
+        List<DataQualityWarning> tempWarnings = new ArrayList<>();
+        Integer creditScore = parseInteger(borrower.getCreditScore(), id, "BORR_CRDT_SCR", tempWarnings);
         if (creditScore != null && (creditScore < 300 || creditScore > 850)) {
             warnings.add(new DataQualityWarning(id, "BORR_CRDT_SCR",
                     "Credit score " + creditScore + " outside valid range (300-850)", Severity.MEDIUM));
@@ -223,15 +225,12 @@ public class LegacyDataValidator {
             }
         }
 
-        parseAmount(acct.getOriginalAmount(), id, "LN_ORIG_AMT", warnings);
-        parseAmount(acct.getCurrentBalance(), id, "LN_CURR_BAL", warnings);
-        parseDecimal(acct.getInterestRate(), id, "LN_INT_RT", warnings);
-        parseAmount(acct.getMonthlyPayment(), id, "LN_PMT_AMT", warnings);
+        // Fields re-parsed in toLoanSummary are omitted here to avoid duplicate warnings.
+        // Validate fields NOT re-parsed in the DTO layer:
         parseAmount(acct.getEscrowBalance(), id, "LN_ESCROW_BAL", warnings);
         parseDecimal(acct.getLtvPercent(), id, "LN_LTV_PCT", warnings);
         parseAmount(acct.getAppraisedValue(), id, "PROP_APRS_VAL", warnings);
 
-        parseDate(acct.getOriginationDate(), id, "LN_ORIG_DT", warnings);
         parseDate(acct.getMaturityDate(), id, "LN_MAT_DT", warnings);
         parseDate(acct.getFirstPaymentDate(), id, "LN_1ST_PMT_DT", warnings);
         parseDate(acct.getNextPaymentDate(), id, "LN_NXT_PMT_DT", warnings);
@@ -260,11 +259,13 @@ public class LegacyDataValidator {
                     "Unknown payment status code: '" + pmt.getStatusCode() + "'", Severity.HIGH));
         }
 
-        BigDecimal total = parseAmount(pmt.getTotalAmount(), id, "PMT_AMT", warnings);
-        BigDecimal principal = parseAmount(pmt.getPrincipalAmount(), id, "PMT_PRIN_AMT", warnings);
-        BigDecimal interest = parseAmount(pmt.getInterestAmount(), id, "PMT_INT_AMT", warnings);
-        BigDecimal escrow = parseAmount(pmt.getEscrowAmount(), id, "PMT_ESCROW_AMT", warnings);
-        BigDecimal lateFee = parseAmount(pmt.getLateFee(), id, "PMT_LATE_FEE", warnings);
+        // Use temporary list for component sum validation — these fields are re-parsed in toPaymentDto
+        List<DataQualityWarning> tempWarnings = new ArrayList<>();
+        BigDecimal total = parseAmount(pmt.getTotalAmount(), id, "PMT_AMT", tempWarnings);
+        BigDecimal principal = parseAmount(pmt.getPrincipalAmount(), id, "PMT_PRIN_AMT", tempWarnings);
+        BigDecimal interest = parseAmount(pmt.getInterestAmount(), id, "PMT_INT_AMT", tempWarnings);
+        BigDecimal escrow = parseAmount(pmt.getEscrowAmount(), id, "PMT_ESCROW_AMT", tempWarnings);
+        BigDecimal lateFee = parseAmount(pmt.getLateFee(), id, "PMT_LATE_FEE", tempWarnings);
 
         BigDecimal componentSum = principal.add(interest).add(escrow).add(lateFee);
         if (componentSum.subtract(total).abs().compareTo(PAYMENT_TOLERANCE) > 0) {
@@ -274,7 +275,7 @@ public class LegacyDataValidator {
                     Severity.CRITICAL));
         }
 
-        parseDate(pmt.getPaymentDate(), id, "PMT_DT", warnings);
+        // Validate fields NOT re-parsed in the DTO layer:
         parseDate(pmt.getReceivedDate(), id, "PMT_RECV_DT", warnings);
         parseDate(pmt.getProcessedDate(), id, "PMT_PROC_DT", warnings);
         parseDate(pmt.getCreatedDate(), id, "PMT_CRET_DT", warnings);
