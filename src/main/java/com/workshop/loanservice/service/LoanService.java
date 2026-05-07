@@ -126,8 +126,19 @@ public class LoanService {
         List<DataQualityWarning> warnings = new ArrayList<>();
         String id = acct.getLoanAccountNumber();
 
-        warnings.addAll(validator.validateLoanAccount(acct));
+        // Required-field checks (not duplicated by per-field parsing below)
+        if (acct.getBorrowerId() == null || acct.getBorrowerId().isBlank()) {
+            warnings.add(new DataQualityWarning(
+                    DataQualityWarning.Severity.HIGH, id, "borrowerId",
+                    "Required field is null/blank", acct.getBorrowerId()));
+        }
+        if (acct.getProductCode() == null || acct.getProductCode().isBlank()) {
+            warnings.add(new DataQualityWarning(
+                    DataQualityWarning.Severity.HIGH, id, "productCode",
+                    "Required field is null/blank", acct.getProductCode()));
+        }
 
+        // Cross-entity and referential checks
         validator.validateBorrowerExists(acct.getBorrowerId(), borrower != null, id, warnings);
         validator.validateProductExists(acct.getProductCode(), product != null, id, warnings);
         validator.validateDenormalizedBorrowerName(acct, borrower, warnings);
@@ -137,6 +148,7 @@ public class LoanService {
                     acct.getBorrowerSsnLast4(), borrower.getPhoneNumber(), id, warnings);
         }
 
+        // Build DTO with per-field validated parsing (each field parsed exactly once)
         LoanSummaryDto dto = new LoanSummaryDto();
         dto.setLoanAccountNumber(id);
         dto.setBorrowerName(validator.buildBorrowerName(
@@ -156,6 +168,20 @@ public class LoanService {
                 acct.getPropertyState(), acct.getPropertyZip(), id, warnings));
         dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
 
+        // Validate fields not used in DTO but still worth checking
+        validator.parseAmount(acct.getEscrowBalance(), id, "escrowBalance", warnings);
+        validator.parseDecimal(acct.getLtvPercent(), id, "ltvPercent", warnings);
+        validator.parseAmount(acct.getAppraisedValue(), id, "appraisedValue", warnings);
+        validator.parseInteger(acct.getTermMonths(), id, "termMonths", warnings);
+        validator.parseInteger(acct.getDelinquencyDays(), id, "delinquencyDays", warnings);
+        validator.validateAndFormatDate(acct.getMaturityDate(), id, "maturityDate", warnings);
+        validator.validateAndFormatDate(acct.getFirstPaymentDate(), id, "firstPaymentDate", warnings);
+        validator.validateAndFormatDate(acct.getNextPaymentDate(), id, "nextPaymentDate", warnings);
+        if (acct.getPropertyType() != null) {
+            validator.validateStatusCode(acct.getPropertyType(), Set.of("SFR", "CND", "MFR", "TWN"),
+                    id, "propertyType", warnings);
+        }
+
         logWarnings(warnings);
         return dto;
     }
@@ -164,7 +190,22 @@ public class LoanService {
         List<DataQualityWarning> warnings = new ArrayList<>();
         String id = borrower.getBorrowerId();
 
-        warnings.addAll(validator.validateBorrower(borrower));
+        // Required-field checks
+        if (borrower.getFirstName() == null || borrower.getFirstName().isBlank()) {
+            warnings.add(new DataQualityWarning(
+                    DataQualityWarning.Severity.HIGH, id, "firstName",
+                    "Required field is null/blank", borrower.getFirstName()));
+        }
+        if (borrower.getLastName() == null || borrower.getLastName().isBlank()) {
+            warnings.add(new DataQualityWarning(
+                    DataQualityWarning.Severity.HIGH, id, "lastName",
+                    "Required field is null/blank", borrower.getLastName()));
+        }
+        if (borrower.getSsnEncrypted() == null || borrower.getSsnEncrypted().isBlank()) {
+            warnings.add(new DataQualityWarning(
+                    DataQualityWarning.Severity.HIGH, id, "ssnEncrypted",
+                    "Required field is null/blank", borrower.getSsnEncrypted()));
+        }
 
         BorrowerDto dto = new BorrowerDto();
         dto.setId(id);
@@ -177,9 +218,25 @@ public class LoanService {
         dto.setPhone(borrower.getPhoneNumber());
         dto.setCity(borrower.getCity());
         dto.setState(borrower.getStateCode());
-        dto.setCreditScore(validator.parseInteger(
-                borrower.getCreditScore(), id, "creditScore", warnings));
+
+        Integer creditScore = validator.parseInteger(
+                borrower.getCreditScore(), id, "creditScore", warnings);
+        if (creditScore != null && (creditScore < 300 || creditScore > 850)) {
+            warnings.add(new DataQualityWarning(
+                    DataQualityWarning.Severity.MEDIUM, id, "creditScore",
+                    "Credit score outside valid range (300-850)",
+                    borrower.getCreditScore()));
+        }
+        dto.setCreditScore(creditScore);
         dto.setEmploymentStatus(borrower.getEmploymentStatus());
+
+        // Validate remaining fields not mapped to DTO
+        validator.parseAmount(borrower.getAnnualIncome(), id, "annualIncome", warnings);
+        validator.validateAndFormatDate(borrower.getDateOfBirth(), id, "dateOfBirth", warnings);
+        validator.validateAndFormatDate(borrower.getCreatedDate(), id, "createdDate", warnings);
+        validator.validateAndFormatDate(borrower.getUpdatedDate(), id, "updatedDate", warnings);
+        validator.validateStatusCode(borrower.getStatusCode(),
+                Set.of("ACT", "INA"), id, "statusCode", warnings);
 
         logWarnings(warnings);
         return dto;
@@ -189,7 +246,12 @@ public class LoanService {
         List<DataQualityWarning> warnings = new ArrayList<>();
         String id = pmt.getPaymentSequenceNumber();
 
-        warnings.addAll(validator.validatePayment(pmt));
+        // Required-field check
+        if (pmt.getLoanAccountNumber() == null || pmt.getLoanAccountNumber().isBlank()) {
+            warnings.add(new DataQualityWarning(
+                    DataQualityWarning.Severity.HIGH, id, "loanAccountNumber",
+                    "Required field is null/blank", pmt.getLoanAccountNumber()));
+        }
 
         PaymentDto dto = new PaymentDto();
         dto.setPaymentId(id);
@@ -197,6 +259,7 @@ public class LoanService {
         dto.setPaymentDate(validator.validateAndFormatDate(
                 pmt.getPaymentDate(), id, "paymentDate", warnings));
 
+        // Parse each field exactly once, then use for both DTO and cross-validation
         BigDecimal total = validator.parseAmount(pmt.getTotalAmount(), id, "totalAmount", warnings);
         BigDecimal principal = validator.parseAmount(pmt.getPrincipalAmount(), id, "principalAmount", warnings);
         BigDecimal interest = validator.parseAmount(pmt.getInterestAmount(), id, "interestAmount", warnings);
@@ -209,12 +272,20 @@ public class LoanService {
         dto.setEscrowAmount(escrow);
         dto.setLateFee(lateFee);
 
+        // Cross-field validation using already-parsed values
+        validator.validatePaymentComponents(id, total, principal, interest, escrow, lateFee, warnings);
+
         dto.setType(expandPaymentType(
                 validator.validateStatusCode(pmt.getTypeCode(), VALID_PAYMENT_TYPE_CODES,
                         id, "typeCode", warnings)));
         dto.setStatus(expandPaymentStatus(
                 validator.validateStatusCode(pmt.getStatusCode(), VALID_PAYMENT_STATUS_CODES,
                         id, "statusCode", warnings)));
+
+        // Validate remaining date fields and late fee consistency
+        validator.validateAndFormatDate(pmt.getReceivedDate(), id, "receivedDate", warnings);
+        validator.validateAndFormatDate(pmt.getProcessedDate(), id, "processedDate", warnings);
+        validator.validateLateFeeConsistency(pmt, warnings);
 
         logWarnings(warnings);
         return dto;

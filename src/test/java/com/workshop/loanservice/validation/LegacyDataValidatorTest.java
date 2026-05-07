@@ -533,6 +533,141 @@ class LegacyDataValidatorTest {
     }
 
     // =========================================================================
+    // Edge cases
+    // =========================================================================
+
+    @Nested
+    class EdgeCaseTests {
+
+        @Test
+        void parseAmount_negativeAmount() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            BigDecimal result = validator.parseAmount("-500.00", "REC-1", "amount", warnings);
+            assertEquals(new BigDecimal("-500.00"), result);
+            assertTrue(warnings.isEmpty());
+        }
+
+        @Test
+        void parseAmount_emptyStringReturnsZero() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            BigDecimal result = validator.parseAmount("", "REC-1", "amount", warnings);
+            assertEquals(BigDecimal.ZERO, result);
+            assertTrue(warnings.isEmpty());
+        }
+
+        @Test
+        void parseAmount_whitespaceAroundCommaValue() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            // parseAmount strips commas but not leading/trailing whitespace
+            BigDecimal result = validator.parseAmount("285,000", "REC-1", "amount", warnings);
+            assertEquals(new BigDecimal("285000"), result);
+            assertTrue(warnings.isEmpty());
+        }
+
+        @Test
+        void parseDecimal_commasInValueTriggersWarning() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            BigDecimal result = validator.parseDecimal("1,234.56", "REC-1", "rate", warnings);
+            // parseDecimal does NOT strip commas, so this fails to parse
+            assertEquals(BigDecimal.ZERO, result);
+            assertEquals(1, warnings.size());
+            assertEquals(Severity.CRITICAL, warnings.get(0).getSeverity());
+        }
+
+        @Test
+        void parseInteger_leadingZeros() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            Integer result = validator.parseInteger("0745", "REC-1", "score", warnings);
+            assertEquals(745, result);
+            assertTrue(warnings.isEmpty());
+        }
+
+        @Test
+        void parseInteger_negativeValue() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            Integer result = validator.parseInteger("-5", "REC-1", "days", warnings);
+            assertEquals(-5, result);
+            assertTrue(warnings.isEmpty());
+        }
+
+        @Test
+        void validateDate_leapYear() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            String result = validator.validateAndFormatDate("02/29/2024", "REC-1", "date", warnings);
+            assertEquals("2024-02-29", result);
+            assertTrue(warnings.isEmpty());
+        }
+
+        @Test
+        void validateDate_impossibleDate_resolvedSmart() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            // Java's SMART resolver clamps Feb 30 to Feb 28 — no warning
+            String result = validator.validateAndFormatDate("02/30/2025", "REC-1", "date", warnings);
+            assertEquals("2025-02-28", result);
+        }
+
+        @Test
+        void validateDate_completeGarbage() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            String result = validator.validateAndFormatDate("99/99/9999", "REC-1", "date", warnings);
+            assertEquals("99/99/9999", result);
+            assertEquals(1, warnings.size());
+            assertEquals(Severity.MEDIUM, warnings.get(0).getSeverity());
+        }
+
+        @Test
+        void validatePaymentComponents_allZeros() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            validator.validatePaymentComponents("PMT-001",
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                    BigDecimal.ZERO, BigDecimal.ZERO, warnings);
+            assertTrue(warnings.isEmpty());
+        }
+
+        @Test
+        void validateSsnLast4_shortPhoneNumber() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            validator.validateSsnLast4AgainstPhone("0142", "123", "LN-001", warnings);
+            // Phone has fewer than 4 digits after stripping non-numeric chars
+            assertTrue(warnings.isEmpty());
+        }
+
+        @Test
+        void buildPropertyAddress_partialNulls() {
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            String result = validator.buildPropertyAddress(
+                    "742 Elm Street", null, "IL", "62701", "LN-001", warnings);
+            // Not all null so no HIGH warning, but city is blank in output
+            assertEquals("742 Elm Street, , IL 62701", result);
+            assertTrue(warnings.isEmpty());
+        }
+
+        @Test
+        void validateLateFee_exactlyThreeDaysLate_noWarning() {
+            LegacyPayment pmt = new LegacyPayment();
+            pmt.setPaymentSequenceNumber("PMT-001");
+            pmt.setPaymentDate("12/01/2025");
+            pmt.setReceivedDate("12/04/2025");  // 3 days late = at boundary
+            pmt.setLateFee("0.00");
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            validator.validateLateFeeConsistency(pmt, warnings);
+            assertTrue(warnings.isEmpty(), "3 days late should not trigger warning (threshold is >3)");
+        }
+
+        @Test
+        void validateLateFee_nullDates_noWarning() {
+            LegacyPayment pmt = new LegacyPayment();
+            pmt.setPaymentSequenceNumber("PMT-001");
+            pmt.setPaymentDate(null);
+            pmt.setReceivedDate(null);
+            pmt.setLateFee("0.00");
+            List<DataQualityWarning> warnings = new ArrayList<>();
+            validator.validateLateFeeConsistency(pmt, warnings);
+            assertTrue(warnings.isEmpty());
+        }
+    }
+
+    // =========================================================================
     // Full entity validation
     // =========================================================================
 

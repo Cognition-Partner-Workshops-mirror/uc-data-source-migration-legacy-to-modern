@@ -89,25 +89,25 @@ Wrap all parsing in try-catch blocks. Return a configurable fallback (e.g., `Big
 
 | Field | Value |
 |---|---|
-| **Severity** | High |
+| **Severity** | Medium |
 | **Affected Table** | `CDW_LN_ACCT` |
 | **Affected Columns** | `BORR_FST_NM`, `BORR_LST_NM`, `PROP_ADDR_LN1`, `PROP_CTY_NM`, `PROP_ST_CD`, `PROP_ZIP_CD` |
 
 ### Description
-`LoanService.toLoanSummary()` concatenates borrower name fields and property address fields without null checks. If any of these denormalized fields are null (which the schema allows), a `NullPointerException` is thrown.
+`LoanService.toLoanSummary()` concatenates borrower name fields and property address fields without null checks. In Java, string concatenation with a null reference produces the literal text `"null"` rather than a `NullPointerException`. This means a null borrower first name results in the API returning `"null Mitchell"` instead of crashing — the output is incorrect but not a runtime failure.
 
 ### Example
 ```java
-// Line 106 — NPE if borrowerFirstName or borrowerLastName is null
+// If borrowerFirstName is null, result is the string "null Mitchell"
 dto.setBorrowerName(acct.getBorrowerFirstName() + " " + acct.getBorrowerLastName());
 
-// Lines 114-115 — NPE if any property field is null
+// If propertyCity is null, result includes literal "null" in the address
 dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
         + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
 ```
 
 ### Business Impact
-A single loan record with a null borrower name or null property field causes the entire `GET /api/loans` endpoint to fail with an HTTP 500 error, blocking all loan queries.
+API consumers receive borrower names like `"null Mitchell"` or addresses like `"742 Elm Street, null, IL 62701"`. While not a crash, this degrades data quality in downstream reports and user-facing displays. No records in the current seed data trigger this because all name/address fields are populated.
 
 ### Recommended Fix
 Use null-safe concatenation with fallback defaults (e.g., `"Unknown"` for missing names, `""` for missing address components).
