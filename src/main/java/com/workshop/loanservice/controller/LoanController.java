@@ -10,6 +10,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * REST controller exposing loan endpoints under {@code /api/loans}.
+ */
 @RestController
 @RequestMapping("/api/loans")
 public class LoanController {
@@ -20,16 +23,33 @@ public class LoanController {
         this.loanService = loanService;
     }
 
+    /**
+     * Retrieves all loan summaries.
+     *
+     * @return list of all loan summaries
+     */
     @GetMapping
     public List<LoanSummaryDto> getAllLoans() {
         return loanService.getAllLoans();
     }
 
+    /**
+     * Retrieves a single loan summary by account number.
+     *
+     * @param id the loan account number
+     * @return the loan summary
+     */
     @GetMapping("/{id}")
     public LoanSummaryDto getLoan(@PathVariable String id) {
         return loanService.getLoanById(id);
     }
 
+    /**
+     * Retrieves payment history for a specific loan.
+     *
+     * @param loanId the loan account number
+     * @return list of payments for the loan
+     */
     @GetMapping("/{loanId}/payments")
     public List<PaymentDto> getPayments(@PathVariable String loanId) {
         return loanService.getPaymentsByLoan(loanId);
