@@ -141,8 +141,8 @@ public class LoanService {
         String propZip = acct.getPropertyZip() != null ? acct.getPropertyZip() : "";
         dto.setPropertyAddress(propAddr + ", " + propCity + ", " + propState + " " + propZip);
 
-        validator.validatePropertyType(acct.getPropertyType(), recordId);
-        dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
+        String propertyTypeCode = validator.validatePropertyType(acct.getPropertyType(), recordId);
+        dto.setPropertyType(expandPropertyType(propertyTypeCode));
 
         return dto;
     }
