@@ -72,6 +72,7 @@ def transform(df: DataFrame) -> DataFrame:
         F.trim(F.col("BORR_MID_INIT")).alias("middle_initial"),
         F.col("BORR_SSN_ENCR").alias("ssn_hash"),
         parse_date(F.col("BORR_DOB_DT")).alias("date_of_birth"),
+        F.col("BORR_DOB_DT").alias("_raw_dob"),
         F.trim(F.col("BORR_ADDR_LN1")).alias("address_line1"),
         F.trim(F.col("BORR_ADDR_LN2")).alias("address_line2"),
         F.trim(F.col("BORR_CTY_NM")).alias("city"),
@@ -90,15 +91,16 @@ def transform(df: DataFrame) -> DataFrame:
     )
 
     date_parse_failures = transformed.filter(
-        transformed["date_of_birth"].isNull() & clean["BORR_DOB_DT"].isNotNull()
+        F.col("date_of_birth").isNull() & F.col("_raw_dob").isNotNull()
     )
-    if date_parse_failures.count() > 0:
+    failure_count = date_parse_failures.count()
+    if failure_count > 0:
         logger.warning(
             "Found %d records where BORR_DOB_DT could not be parsed to DATE",
-            date_parse_failures.count(),
+            failure_count,
         )
 
-    return transformed
+    return transformed.drop("_raw_dob")
 
 
 def write_target(df: DataFrame, mode: str = "overwrite") -> None:

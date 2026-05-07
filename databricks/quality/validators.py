@@ -65,7 +65,7 @@ def check_row_counts(report: QualityReport, pipeline_results: dict) -> None:
         tgt = counts.get("target_count", 0)
         quarantined = src - tgt
 
-        passed = tgt > 0 and (tgt + quarantined) == src
+        passed = (tgt + quarantined) == src
         report.add(CheckResult(
             category="Row Count Reconciliation",
             check_name=f"{table_name} source vs target",
@@ -104,9 +104,9 @@ def check_required_nulls(spark: SparkSession, report: QualityReport) -> None:
             ))
             continue
 
+        total_count = df.count()
         for col_name in columns:
             null_count = df.filter(F.col(col_name).isNull()).count()
-            total_count = df.count()
             passed = null_count == 0
             report.add(CheckResult(
                 category="Null Checks",

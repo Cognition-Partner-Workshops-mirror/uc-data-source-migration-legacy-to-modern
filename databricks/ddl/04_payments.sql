@@ -9,7 +9,7 @@
 CREATE TABLE IF NOT EXISTS loan_warehouse.payments (
     id                  BIGINT          GENERATED ALWAYS AS IDENTITY,
     legacy_payment_id   STRING          COMMENT 'Legacy PMT_SEQ_NBR for traceability',
-    loan_account_id     BIGINT          NOT NULL COMMENT 'FK to loan_accounts.id',
+    loan_account_id     BIGINT          COMMENT 'FK to loan_accounts.id; NOT NULL enforced by quality checks',
     payment_date        DATE            NOT NULL,
     total_amount        DECIMAL(10, 2),
     principal_amount    DECIMAL(10, 2),

@@ -7,7 +7,7 @@ reused across every ingestion module.
 
 from pyspark.sql import Column
 from pyspark.sql import functions as F
-from pyspark.sql.types import DateType, DecimalType, IntegerType, TimestampType
+from pyspark.sql.types import DecimalType, IntegerType
 
 # ---------------------------------------------------------------------------
 # Date / timestamp parsing
@@ -15,12 +15,12 @@ from pyspark.sql.types import DateType, DecimalType, IntegerType, TimestampType
 
 def parse_date(col: Column) -> Column:
     """Parse a legacy MM/DD/YYYY string into a Spark DateType."""
-    return F.to_date(F.trim(col), "MM/dd/yyyy").cast(DateType())
+    return F.to_date(F.trim(col), "MM/dd/yyyy")
 
 
 def parse_timestamp(col: Column) -> Column:
     """Parse a legacy MM/DD/YYYY string into a Spark TimestampType (midnight)."""
-    return F.to_timestamp(F.trim(col), "MM/dd/yyyy").cast(TimestampType())
+    return F.to_timestamp(F.trim(col), "MM/dd/yyyy")
 
 
 # ---------------------------------------------------------------------------

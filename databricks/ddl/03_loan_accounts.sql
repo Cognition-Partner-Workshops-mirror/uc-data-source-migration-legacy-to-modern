@@ -11,8 +11,8 @@
 CREATE TABLE IF NOT EXISTS loan_warehouse.loan_accounts (
     id                  BIGINT          GENERATED ALWAYS AS IDENTITY,
     account_number      STRING          NOT NULL COMMENT 'Legacy LN_ACCT_NBR',
-    borrower_id         BIGINT          NOT NULL COMMENT 'FK to borrowers.id',
-    product_id          BIGINT          NOT NULL COMMENT 'FK to loan_products.id',
+    borrower_id         BIGINT          COMMENT 'FK to borrowers.id; NOT NULL enforced by quality checks',
+    product_id          BIGINT          COMMENT 'FK to loan_products.id; NOT NULL enforced by quality checks',
     original_amount     DECIMAL(12, 2),
     current_balance     DECIMAL(12, 2),
     interest_rate       DECIMAL(5, 3),
