@@ -11,6 +11,10 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.validation.LegacyDataValidator;
+import com.workshop.loanservice.validation.ValidationResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -26,23 +30,31 @@ import java.util.stream.Collectors;
  * between legacy string-typed fields and proper Java types.
  * When switching data sources, this layer needs to be updated
  * (or replaced) to read from the modern schema.
+ *
+ * Data validation is delegated to LegacyDataValidator which catches
+ * anomalies documented in docs/DATA_ANOMALY_REPORT.md at ingestion time.
  */
 @Service
 public class LoanService {
+
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
 
     private final LegacyBorrowerRepository borrowerRepository;
     private final LegacyLoanAccountRepository loanAccountRepository;
     private final LegacyLoanProductRepository loanProductRepository;
     private final LegacyPaymentRepository paymentRepository;
+    private final LegacyDataValidator validator;
 
     public LoanService(LegacyBorrowerRepository borrowerRepository,
                        LegacyLoanAccountRepository loanAccountRepository,
                        LegacyLoanProductRepository loanProductRepository,
-                       LegacyPaymentRepository paymentRepository) {
+                       LegacyPaymentRepository paymentRepository,
+                       LegacyDataValidator validator) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanProductRepository = loanProductRepository;
         this.paymentRepository = paymentRepository;
+        this.validator = validator;
     }
 
     public List<LoanSummaryDto> getAllLoans() {
@@ -100,6 +112,18 @@ public class LoanService {
     // to proper types. After migration, these should be simplified or removed.
     // =========================================================================
 
+    /**
+     * Runs all validations on the entire legacy dataset.
+     * Returns a ValidationResult capturing every detected anomaly.
+     */
+    public ValidationResult validateAllData() {
+        return validator.validateAll(
+                borrowerRepository.findAll(),
+                loanProductRepository.findAll(),
+                loanAccountRepository.findAll(),
+                paymentRepository.findAll());
+    }
+
     private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
         LoanSummaryDto dto = new LoanSummaryDto();
         dto.setLoanAccountNumber(acct.getLoanAccountNumber());
@@ -110,7 +134,8 @@ public class LoanService {
         dto.setInterestRate(parseLegacyDecimal(acct.getInterestRate()));
         dto.setMonthlyPayment(parseLegacyAmount(acct.getMonthlyPayment()));
         dto.setStatus(expandStatusCode(acct.getStatusCode()));
-        dto.setOriginationDate(acct.getOriginationDate());
+        // Convert legacy MM/DD/YYYY date to ISO-8601 format (ANOM-004 fix)
+        dto.setOriginationDate(validator.formatDateToIso(acct.getOriginationDate()));
         dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
                 + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
         dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
@@ -135,7 +160,8 @@ public class LoanService {
         PaymentDto dto = new PaymentDto();
         dto.setPaymentId(pmt.getPaymentSequenceNumber());
         dto.setLoanAccountNumber(pmt.getLoanAccountNumber());
-        dto.setPaymentDate(pmt.getPaymentDate());
+        // Convert legacy MM/DD/YYYY date to ISO-8601 format (ANOM-004 fix)
+        dto.setPaymentDate(validator.formatDateToIso(pmt.getPaymentDate()));
         dto.setTotalAmount(parseLegacyAmount(pmt.getTotalAmount()));
         dto.setPrincipalAmount(parseLegacyAmount(pmt.getPrincipalAmount()));
         dto.setInterestAmount(parseLegacyAmount(pmt.getInterestAmount()));
@@ -148,20 +174,28 @@ public class LoanService {
 
     /**
      * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
+     * Delegates to validator's safe parser which catches NumberFormatException (ANOM-002 fix).
+     * Falls back to BigDecimal.ZERO on parse failure to prevent endpoint crashes.
      */
     private BigDecimal parseLegacyAmount(String amount) {
-        if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
+        BigDecimal result = validator.safeParseAmount(amount);
+        // Fallback to ZERO if the value was unparseable (null means parse error)
+        return result != null ? result : BigDecimal.ZERO;
     }
 
+    /**
+     * Delegates to validator's safe decimal parser (ANOM-002 fix).
+     */
     private BigDecimal parseLegacyDecimal(String value) {
-        if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
+        BigDecimal result = validator.safeParseDecimal(value);
+        return result != null ? result : BigDecimal.ZERO;
     }
 
+    /**
+     * Delegates to validator's safe integer parser (ANOM-002 fix).
+     */
     private Integer parseLegacyInteger(String value) {
-        if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
+        return validator.safeParseInteger(value);
     }
 
     private String expandStatusCode(String code) {
