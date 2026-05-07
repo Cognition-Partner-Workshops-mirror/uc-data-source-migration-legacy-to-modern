@@ -130,8 +130,9 @@ public class LoanService {
         dto.setMonthlyPayment(validator.parseAmount(acct.getMonthlyPayment(), "monthlyPayment", loanId));
         dto.setStatus(expandStatusCode(validator.validateLoanStatus(acct.getStatusCode(), loanId)));
         dto.setOriginationDate(validator.parseLegacyDate(acct.getOriginationDate(), "originationDate", loanId));
-        dto.setPropertyAddress(validator.safeBorrowerName(acct.getPropertyAddress(), acct.getPropertyCity())
-                + ", " + (acct.getPropertyState() != null ? acct.getPropertyState() : "") + " "
+        dto.setPropertyAddress((acct.getPropertyAddress() != null ? acct.getPropertyAddress() : "") + ", "
+                + (acct.getPropertyCity() != null ? acct.getPropertyCity() : "") + ", "
+                + (acct.getPropertyState() != null ? acct.getPropertyState() : "") + " "
                 + (acct.getPropertyZip() != null ? acct.getPropertyZip() : ""));
         dto.setPropertyType(expandPropertyType(validator.validatePropertyType(acct.getPropertyType(), loanId)));
         return dto;

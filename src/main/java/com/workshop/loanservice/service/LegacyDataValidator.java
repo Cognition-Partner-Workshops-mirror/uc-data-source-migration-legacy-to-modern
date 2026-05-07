@@ -45,7 +45,7 @@ public class LegacyDataValidator {
         }
         String sanitized = NUMERIC_AMOUNT_PATTERN.matcher(amount).replaceAll("");
         if (sanitized.isEmpty()) {
-            log.warn("Unparseable amount in {}.{}: '{}' for record {}", fieldName, recordId, amount, recordId);
+            log.warn("Unparseable amount in {}: '{}' for record {}", fieldName, amount, recordId);
             return BigDecimal.ZERO;
         }
         try {
