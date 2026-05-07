@@ -75,6 +75,11 @@ class LegacyDataValidatorTest {
         assertEquals(new BigDecimal("-100"), validator.parseLegacyAmount("-100"));
     }
 
+    @Test
+    void parseLegacyAmount_multipleDecimalPoints_returnsZero() {
+        assertEquals(BigDecimal.ZERO, validator.parseLegacyAmount("12.34.56"));
+    }
+
     // =========================================================================
     // parseLegacyDecimal tests
     // =========================================================================
@@ -143,6 +148,11 @@ class LegacyDataValidatorTest {
         assertNull(validator.parseLegacyInteger("---"));
     }
 
+    @Test
+    void parseLegacyInteger_overflow_returnsNull() {
+        assertNull(validator.parseLegacyInteger("2147483648"));
+    }
+
     // =========================================================================
     // parseLegacyDate tests
     // =========================================================================
@@ -175,6 +185,16 @@ class LegacyDataValidatorTest {
     @Test
     void parseLegacyDate_invalidMonth_returnsNull() {
         assertNull(validator.parseLegacyDate("13/01/2025"));
+    }
+
+    @Test
+    void parseLegacyDate_nonLeapYear_feb29_returnsNull() {
+        assertNull(validator.parseLegacyDate("02/29/2023"));
+    }
+
+    @Test
+    void parseLegacyDate_leapYear_feb29_parsesCorrectly() {
+        assertEquals(LocalDate.of(2024, 2, 29), validator.parseLegacyDate("02/29/2024"));
     }
 
     // =========================================================================
