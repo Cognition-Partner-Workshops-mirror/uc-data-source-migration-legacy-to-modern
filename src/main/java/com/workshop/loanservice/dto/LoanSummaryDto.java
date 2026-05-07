@@ -1,6 +1,7 @@
 package com.workshop.loanservice.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Summary DTO for loan listing.
@@ -18,6 +19,7 @@ public class LoanSummaryDto {
     private String originationDate;
     private String propertyAddress;
     private String propertyType;
+    private List<String> validationWarnings;
 
     public String getLoanAccountNumber() { return loanAccountNumber; }
     public void setLoanAccountNumber(String loanAccountNumber) { this.loanAccountNumber = loanAccountNumber; }
@@ -41,4 +43,6 @@ public class LoanSummaryDto {
     public void setPropertyAddress(String propertyAddress) { this.propertyAddress = propertyAddress; }
     public String getPropertyType() { return propertyType; }
     public void setPropertyType(String propertyType) { this.propertyType = propertyType; }
+    public List<String> getValidationWarnings() { return validationWarnings; }
+    public void setValidationWarnings(List<String> validationWarnings) { this.validationWarnings = validationWarnings; }
 }

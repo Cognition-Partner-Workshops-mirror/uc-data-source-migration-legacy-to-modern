@@ -17,6 +17,7 @@ public class BorrowerDto {
     private Integer creditScore;
     private String employmentStatus;
     private List<LoanSummaryDto> loans;
+    private List<String> validationWarnings;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -36,4 +37,6 @@ public class BorrowerDto {
     public void setEmploymentStatus(String employmentStatus) { this.employmentStatus = employmentStatus; }
     public List<LoanSummaryDto> getLoans() { return loans; }
     public void setLoans(List<LoanSummaryDto> loans) { this.loans = loans; }
+    public List<String> getValidationWarnings() { return validationWarnings; }
+    public void setValidationWarnings(List<String> validationWarnings) { this.validationWarnings = validationWarnings; }
 }
