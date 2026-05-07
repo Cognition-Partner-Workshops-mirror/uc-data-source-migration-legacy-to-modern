@@ -11,6 +11,9 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.validation.LegacyDataValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -30,19 +33,24 @@ import java.util.stream.Collectors;
 @Service
 public class LoanService {
 
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
+
     private final LegacyBorrowerRepository borrowerRepository;
     private final LegacyLoanAccountRepository loanAccountRepository;
     private final LegacyLoanProductRepository loanProductRepository;
     private final LegacyPaymentRepository paymentRepository;
+    private final LegacyDataValidator validator;
 
     public LoanService(LegacyBorrowerRepository borrowerRepository,
                        LegacyLoanAccountRepository loanAccountRepository,
                        LegacyLoanProductRepository loanProductRepository,
-                       LegacyPaymentRepository paymentRepository) {
+                       LegacyPaymentRepository paymentRepository,
+                       LegacyDataValidator validator) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanProductRepository = loanProductRepository;
         this.paymentRepository = paymentRepository;
+        this.validator = validator;
     }
 
     public List<LoanSummaryDto> getAllLoans() {
@@ -95,73 +103,105 @@ public class LoanService {
     }
 
     // =========================================================================
-    // LEGACY TRANSLATION METHODS
+    // LEGACY TRANSLATION METHODS (with validation)
     // These methods handle the messy conversion from legacy string fields
-    // to proper types. After migration, these should be simplified or removed.
+    // to proper types with data quality validation at ingestion time.
     // =========================================================================
 
     private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
+        String recordId = acct.getLoanAccountNumber();
         LoanSummaryDto dto = new LoanSummaryDto();
-        dto.setLoanAccountNumber(acct.getLoanAccountNumber());
-        dto.setBorrowerName(acct.getBorrowerFirstName() + " " + acct.getBorrowerLastName());
+        dto.setLoanAccountNumber(recordId);
+
+        String firstName = validator.requireNonBlank(
+                acct.getBorrowerFirstName(), "BORR_FST_NM", recordId, "Unknown");
+        String lastName = validator.requireNonBlank(
+                acct.getBorrowerLastName(), "BORR_LST_NM", recordId, "Unknown");
+        dto.setBorrowerName(firstName + " " + lastName);
+
         dto.setProductDescription(product != null ? product.getDescription() : acct.getProductCode());
-        dto.setOriginalAmount(parseLegacyAmount(acct.getOriginalAmount()));
-        dto.setCurrentBalance(parseLegacyAmount(acct.getCurrentBalance()));
-        dto.setInterestRate(parseLegacyDecimal(acct.getInterestRate()));
-        dto.setMonthlyPayment(parseLegacyAmount(acct.getMonthlyPayment()));
-        dto.setStatus(expandStatusCode(acct.getStatusCode()));
-        dto.setOriginationDate(acct.getOriginationDate());
-        dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
-                + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
+
+        validator.validateForeignKeyReference(acct.getBorrowerId(), "BORR_ID", recordId);
+        validator.validateForeignKeyReference(acct.getProductCode(), "PROD_CD", recordId);
+
+        dto.setOriginalAmount(validator.parseAmount(acct.getOriginalAmount(), "LN_ORIG_AMT", recordId));
+        dto.setCurrentBalance(validator.parseAmount(acct.getCurrentBalance(), "LN_CURR_BAL", recordId));
+        dto.setInterestRate(validator.parseDecimal(acct.getInterestRate(), "LN_INT_RT", recordId));
+        dto.setMonthlyPayment(validator.parseAmount(acct.getMonthlyPayment(), "LN_PMT_AMT", recordId));
+
+        String statusCode = validator.validateLoanStatus(acct.getStatusCode(), recordId);
+        dto.setStatus(expandStatusCode(statusCode));
+
+        String originationDate = validator.parseDate(acct.getOriginationDate(), "LN_ORIG_DT", recordId);
+        dto.setOriginationDate(originationDate != null ? originationDate : acct.getOriginationDate());
+
+        String propAddr = acct.getPropertyAddress() != null ? acct.getPropertyAddress() : "";
+        String propCity = acct.getPropertyCity() != null ? acct.getPropertyCity() : "";
+        String propState = acct.getPropertyState() != null ? acct.getPropertyState() : "";
+        String propZip = acct.getPropertyZip() != null ? acct.getPropertyZip() : "";
+        dto.setPropertyAddress(propAddr + ", " + propCity + ", " + propState + " " + propZip);
+
+        validator.validatePropertyType(acct.getPropertyType(), recordId);
         dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
+
         return dto;
     }
 
     private BorrowerDto toBorrowerDto(LegacyBorrower borrower) {
+        String recordId = borrower.getBorrowerId();
         BorrowerDto dto = new BorrowerDto();
-        dto.setId(borrower.getBorrowerId());
+        dto.setId(recordId);
+
+        String firstName = validator.requireNonBlank(
+                borrower.getFirstName(), "BORR_FST_NM", recordId, "Unknown");
+        String lastName = validator.requireNonBlank(
+                borrower.getLastName(), "BORR_LST_NM", recordId, "Unknown");
         String middle = borrower.getMiddleInitial() != null ? " " + borrower.getMiddleInitial() + "." : "";
-        dto.setFullName(borrower.getFirstName() + middle + " " + borrower.getLastName());
+        dto.setFullName(firstName + middle + " " + lastName);
+
         dto.setEmail(borrower.getEmail());
         dto.setPhone(borrower.getPhoneNumber());
         dto.setCity(borrower.getCity());
         dto.setState(borrower.getStateCode());
-        dto.setCreditScore(parseLegacyInteger(borrower.getCreditScore()));
+        dto.setCreditScore(validator.parseInteger(borrower.getCreditScore(), "BORR_CRDT_SCR", recordId));
         dto.setEmploymentStatus(borrower.getEmploymentStatus());
+
         return dto;
     }
 
     private PaymentDto toPaymentDto(LegacyPayment pmt) {
+        String recordId = pmt.getPaymentSequenceNumber();
         PaymentDto dto = new PaymentDto();
-        dto.setPaymentId(pmt.getPaymentSequenceNumber());
+        dto.setPaymentId(recordId);
         dto.setLoanAccountNumber(pmt.getLoanAccountNumber());
-        dto.setPaymentDate(pmt.getPaymentDate());
-        dto.setTotalAmount(parseLegacyAmount(pmt.getTotalAmount()));
-        dto.setPrincipalAmount(parseLegacyAmount(pmt.getPrincipalAmount()));
-        dto.setInterestAmount(parseLegacyAmount(pmt.getInterestAmount()));
-        dto.setEscrowAmount(parseLegacyAmount(pmt.getEscrowAmount()));
-        dto.setLateFee(parseLegacyAmount(pmt.getLateFee()));
-        dto.setType(expandPaymentType(pmt.getTypeCode()));
-        dto.setStatus(expandPaymentStatus(pmt.getStatusCode()));
+
+        validator.validateForeignKeyReference(pmt.getLoanAccountNumber(), "LN_ACCT_NBR", recordId);
+
+        String paymentDate = validator.parseDate(pmt.getPaymentDate(), "PMT_DT", recordId);
+        dto.setPaymentDate(paymentDate != null ? paymentDate : pmt.getPaymentDate());
+
+        BigDecimal totalAmount = validator.parseAmount(pmt.getTotalAmount(), "PMT_AMT", recordId);
+        BigDecimal principalAmount = validator.parseAmount(pmt.getPrincipalAmount(), "PMT_PRIN_AMT", recordId);
+        BigDecimal interestAmount = validator.parseAmount(pmt.getInterestAmount(), "PMT_INT_AMT", recordId);
+        BigDecimal escrowAmount = validator.parseAmount(pmt.getEscrowAmount(), "PMT_ESCROW_AMT", recordId);
+        BigDecimal lateFee = validator.parseAmount(pmt.getLateFee(), "PMT_LATE_FEE", recordId);
+
+        dto.setTotalAmount(totalAmount);
+        dto.setPrincipalAmount(principalAmount);
+        dto.setInterestAmount(interestAmount);
+        dto.setEscrowAmount(escrowAmount);
+        dto.setLateFee(lateFee);
+
+        validator.validatePaymentConsistency(totalAmount, principalAmount, interestAmount,
+                escrowAmount, lateFee, recordId);
+
+        String typeCode = validator.validatePaymentType(pmt.getTypeCode(), recordId);
+        dto.setType(expandPaymentType(typeCode));
+
+        String statusCode = validator.validatePaymentStatus(pmt.getStatusCode(), recordId);
+        dto.setStatus(expandPaymentStatus(statusCode));
+
         return dto;
-    }
-
-    /**
-     * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
-     */
-    private BigDecimal parseLegacyAmount(String amount) {
-        if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
-    }
-
-    private BigDecimal parseLegacyDecimal(String value) {
-        if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
-    }
-
-    private Integer parseLegacyInteger(String value) {
-        if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
     }
 
     private String expandStatusCode(String code) {
