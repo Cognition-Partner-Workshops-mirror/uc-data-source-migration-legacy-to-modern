@@ -166,7 +166,9 @@ public class LoanService {
 
         // Cross-field validation: delinquency vs status (ANO-006)
         Integer delinquencyDays = LegacyDataValidator.parseInteger(acct.getDelinquencyDays(), "LN_DLQ_DAYS", id);
-        LegacyDataValidator.validateDelinquencyStatus(delinquencyDays, acct.getStatusCode(), id);
+        // Use validated (trimmed) statusCode, not raw acct.getStatusCode(), to ensure
+        // exact string matching works even if raw value has whitespace
+        LegacyDataValidator.validateDelinquencyStatus(delinquencyDays, statusCode, id);
 
         // Cross-field validation: LTV percent vs computed value (ANO-009)
         BigDecimal storedLtv = LegacyDataValidator.parseDecimal(acct.getLtvPercent(), "LN_LTV_PCT", id);
@@ -260,8 +262,10 @@ public class LoanService {
     // STATUS CODE EXPANSION METHODS
     // =========================================================================
 
+    // Handle both null and "UNKNOWN" (returned by validateStatusCode for blank inputs)
+    // to preserve backward-compatible "Unknown" label in API responses
     private String expandStatusCode(String code) {
-        if (code == null) return "Unknown";
+        if (code == null || "UNKNOWN".equals(code)) return "Unknown";
         return switch (code) {
             case "ACT" -> "Active";
             case "CLO" -> "Closed";
@@ -272,7 +276,7 @@ public class LoanService {
     }
 
     private String expandPropertyType(String code) {
-        if (code == null) return "Unknown";
+        if (code == null || "UNKNOWN".equals(code)) return "Unknown";
         return switch (code) {
             case "SFR" -> "Single Family Residence";
             case "CND" -> "Condominium";
@@ -283,7 +287,7 @@ public class LoanService {
     }
 
     private String expandPaymentType(String code) {
-        if (code == null) return "Unknown";
+        if (code == null || "UNKNOWN".equals(code)) return "Unknown";
         return switch (code) {
             case "REG" -> "Regular";
             case "EXT" -> "Extra";
@@ -294,7 +298,7 @@ public class LoanService {
     }
 
     private String expandPaymentStatus(String code) {
-        if (code == null) return "Unknown";
+        if (code == null || "UNKNOWN".equals(code)) return "Unknown";
         return switch (code) {
             case "PST" -> "Posted";
             case "REV" -> "Reversed";
