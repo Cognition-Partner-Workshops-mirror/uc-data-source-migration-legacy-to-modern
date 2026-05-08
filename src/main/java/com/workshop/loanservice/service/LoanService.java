@@ -11,6 +11,7 @@ import com.workshop.loanservice.repository.LegacyBorrowerRepository;
 import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
 import com.workshop.loanservice.repository.LegacyLoanProductRepository;
 import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.validation.LegacyDataValidator;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -26,6 +27,10 @@ import java.util.stream.Collectors;
  * between legacy string-typed fields and proper Java types.
  * When switching data sources, this layer needs to be updated
  * (or replaced) to read from the modern schema.
+ *
+ * Data validation is delegated to LegacyDataValidator which catches
+ * anomalies (malformed numbers, invalid dates, cross-field inconsistencies)
+ * at ingestion time rather than letting them propagate as runtime exceptions.
  */
 @Service
 public class LoanService {
@@ -34,15 +39,18 @@ public class LoanService {
     private final LegacyLoanAccountRepository loanAccountRepository;
     private final LegacyLoanProductRepository loanProductRepository;
     private final LegacyPaymentRepository paymentRepository;
+    private final LegacyDataValidator validator;
 
     public LoanService(LegacyBorrowerRepository borrowerRepository,
                        LegacyLoanAccountRepository loanAccountRepository,
                        LegacyLoanProductRepository loanProductRepository,
-                       LegacyPaymentRepository paymentRepository) {
+                       LegacyPaymentRepository paymentRepository,
+                       LegacyDataValidator validator) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanProductRepository = loanProductRepository;
         this.paymentRepository = paymentRepository;
+        this.validator = validator;
     }
 
     public List<LoanSummaryDto> getAllLoans() {
@@ -101,64 +109,147 @@ public class LoanService {
     // =========================================================================
 
     private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
+        String id = acct.getLoanAccountNumber();
         LoanSummaryDto dto = new LoanSummaryDto();
-        dto.setLoanAccountNumber(acct.getLoanAccountNumber());
-        dto.setBorrowerName(acct.getBorrowerFirstName() + " " + acct.getBorrowerLastName());
+        dto.setLoanAccountNumber(id);
+
+        // Use null-safe name building instead of raw concatenation (ANM-009)
+        dto.setBorrowerName(validator.buildFullName(
+                acct.getBorrowerFirstName(), null, acct.getBorrowerLastName()));
         dto.setProductDescription(product != null ? product.getDescription() : acct.getProductCode());
-        dto.setOriginalAmount(parseLegacyAmount(acct.getOriginalAmount()));
-        dto.setCurrentBalance(parseLegacyAmount(acct.getCurrentBalance()));
-        dto.setInterestRate(parseLegacyDecimal(acct.getInterestRate()));
-        dto.setMonthlyPayment(parseLegacyAmount(acct.getMonthlyPayment()));
+
+        // Use validated parsing with error handling instead of raw BigDecimal construction (ANM-003)
+        BigDecimal originalAmount = validator.safeParseAmount(acct.getOriginalAmount(), "LN_ORIG_AMT", id);
+        dto.setOriginalAmount(validator.validateNonNegativeAmount(originalAmount, "LN_ORIG_AMT", id));
+
+        BigDecimal currentBalance = validator.safeParseAmount(acct.getCurrentBalance(), "LN_CURR_BAL", id);
+        dto.setCurrentBalance(validator.validateNonNegativeAmount(currentBalance, "LN_CURR_BAL", id));
+
+        BigDecimal interestRate = validator.safeParseDecimal(acct.getInterestRate(), "LN_INT_RT", id);
+        dto.setInterestRate(validator.validateInterestRate(interestRate, id));
+
+        BigDecimal monthlyPayment = validator.safeParseAmount(acct.getMonthlyPayment(), "LN_PMT_AMT", id);
+        dto.setMonthlyPayment(validator.validateNonNegativeAmount(monthlyPayment, "LN_PMT_AMT", id));
+
+        // Validate status code against known set before expanding (ANM-005)
+        validator.validateLoanStatusCode(acct.getStatusCode(), id);
         dto.setStatus(expandStatusCode(acct.getStatusCode()));
+
+        // Validate date format at ingestion time (ANM-004)
+        validator.safeParseLegacyDate(acct.getOriginationDate(), "LN_ORIG_DT", id);
         dto.setOriginationDate(acct.getOriginationDate());
-        dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
-                + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
+
+        // Use null-safe address building instead of raw concatenation (ANM-009)
+        dto.setPropertyAddress(validator.buildFullAddress(
+                acct.getPropertyAddress(), acct.getPropertyCity(),
+                acct.getPropertyState(), acct.getPropertyZip()));
+
+        // Validate property type code before expanding
+        validator.validatePropertyTypeCode(acct.getPropertyType(), id);
         dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
+
+        // Cross-field validation: delinquency days vs. status (ANM-005)
+        validator.validateDelinquencyStatusConsistency(
+                acct.getStatusCode(), acct.getDelinquencyDays(), id);
+
+        // Cross-field validation: LTV percentage vs. computed value (ANM-008)
+        validator.validateLtvPercentage(
+                acct.getLtvPercent(), acct.getOriginalAmount(),
+                acct.getAppraisedValue(), id);
+
         return dto;
     }
 
     private BorrowerDto toBorrowerDto(LegacyBorrower borrower) {
+        String id = borrower.getBorrowerId();
         BorrowerDto dto = new BorrowerDto();
-        dto.setId(borrower.getBorrowerId());
-        String middle = borrower.getMiddleInitial() != null ? " " + borrower.getMiddleInitial() + "." : "";
-        dto.setFullName(borrower.getFirstName() + middle + " " + borrower.getLastName());
+        dto.setId(id);
+
+        // Use validator for null-safe name building (ANM-009)
+        dto.setFullName(validator.buildFullName(
+                borrower.getFirstName(), borrower.getMiddleInitial(), borrower.getLastName()));
         dto.setEmail(borrower.getEmail());
         dto.setPhone(borrower.getPhoneNumber());
         dto.setCity(borrower.getCity());
         dto.setState(borrower.getStateCode());
-        dto.setCreditScore(parseLegacyInteger(borrower.getCreditScore()));
+
+        // Use validated integer parsing with range check (ANM-003)
+        Integer creditScore = validator.safeParseInteger(borrower.getCreditScore(), "BORR_CRDT_SCR", id);
+        dto.setCreditScore(validator.validateCreditScore(creditScore, id));
+
         dto.setEmploymentStatus(borrower.getEmploymentStatus());
+
+        // Validate borrower status code
+        validator.validateBorrowerStatusCode(borrower.getStatusCode(), id);
+
         return dto;
     }
 
     private PaymentDto toPaymentDto(LegacyPayment pmt) {
+        String id = pmt.getPaymentSequenceNumber();
         PaymentDto dto = new PaymentDto();
-        dto.setPaymentId(pmt.getPaymentSequenceNumber());
+        dto.setPaymentId(id);
         dto.setLoanAccountNumber(pmt.getLoanAccountNumber());
+
+        // Validate date format at ingestion time (ANM-004)
+        validator.safeParseLegacyDate(pmt.getPaymentDate(), "PMT_DT", id);
         dto.setPaymentDate(pmt.getPaymentDate());
-        dto.setTotalAmount(parseLegacyAmount(pmt.getTotalAmount()));
-        dto.setPrincipalAmount(parseLegacyAmount(pmt.getPrincipalAmount()));
-        dto.setInterestAmount(parseLegacyAmount(pmt.getInterestAmount()));
-        dto.setEscrowAmount(parseLegacyAmount(pmt.getEscrowAmount()));
-        dto.setLateFee(parseLegacyAmount(pmt.getLateFee()));
+
+        // Use validated amount parsing with error handling (ANM-003)
+        BigDecimal totalAmount = validator.safeParseAmount(pmt.getTotalAmount(), "PMT_AMT", id);
+        dto.setTotalAmount(validator.validateNonNegativeAmount(totalAmount, "PMT_AMT", id));
+
+        BigDecimal principalAmount = validator.safeParseAmount(pmt.getPrincipalAmount(), "PMT_PRIN_AMT", id);
+        dto.setPrincipalAmount(validator.validateNonNegativeAmount(principalAmount, "PMT_PRIN_AMT", id));
+
+        BigDecimal interestAmount = validator.safeParseAmount(pmt.getInterestAmount(), "PMT_INT_AMT", id);
+        dto.setInterestAmount(validator.validateNonNegativeAmount(interestAmount, "PMT_INT_AMT", id));
+
+        BigDecimal escrowAmount = validator.safeParseAmount(pmt.getEscrowAmount(), "PMT_ESCROW_AMT", id);
+        dto.setEscrowAmount(validator.validateNonNegativeAmount(escrowAmount, "PMT_ESCROW_AMT", id));
+
+        BigDecimal lateFee = validator.safeParseAmount(pmt.getLateFee(), "PMT_LATE_FEE", id);
+        dto.setLateFee(validator.validateNonNegativeAmount(lateFee, "PMT_LATE_FEE", id));
+
+        // Cross-field validation: payment components must sum to total (ANM-001)
+        validator.validatePaymentComponentSum(
+                dto.getTotalAmount(), dto.getPrincipalAmount(),
+                dto.getInterestAmount(), dto.getEscrowAmount(),
+                dto.getLateFee(), id);
+
+        // Validate type and status codes before expanding
+        validator.validatePaymentTypeCode(pmt.getTypeCode(), id);
         dto.setType(expandPaymentType(pmt.getTypeCode()));
+
+        validator.validatePaymentStatusCode(pmt.getStatusCode(), id);
         dto.setStatus(expandPaymentStatus(pmt.getStatusCode()));
+
         return dto;
     }
 
     /**
      * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
+     * @deprecated Use {@link LegacyDataValidator#safeParseAmount} instead for safe parsing with error handling.
      */
+    @Deprecated
     private BigDecimal parseLegacyAmount(String amount) {
         if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
         return new BigDecimal(amount.replace(",", ""));
     }
 
+    /**
+     * @deprecated Use {@link LegacyDataValidator#safeParseDecimal} instead for safe parsing with error handling.
+     */
+    @Deprecated
     private BigDecimal parseLegacyDecimal(String value) {
         if (value == null || value.isBlank()) return BigDecimal.ZERO;
         return new BigDecimal(value.trim());
     }
 
+    /**
+     * @deprecated Use {@link LegacyDataValidator#safeParseInteger} instead for safe parsing with error handling.
+     */
+    @Deprecated
     private Integer parseLegacyInteger(String value) {
         if (value == null || value.isBlank()) return null;
         return Integer.parseInt(value.trim());
