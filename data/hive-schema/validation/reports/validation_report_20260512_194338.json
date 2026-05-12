@@ -1,0 +1,1144 @@
+{
+  "metadata": {
+    "report_type": "hive_data_validation",
+    "generated_at": "2026-05-12T19:43:38.467682",
+    "as_of_dt": "2024-01-31",
+    "as_of_dt_previous": "2023-12-31",
+    "execution_time": "0.0s",
+    "jdbc_url": "SYNTHETIC_DATA (no live Hive connection)",
+    "categories": [
+      "row_count",
+      "transformation",
+      "aggregate",
+      "regression",
+      "integration"
+    ],
+    "mode": "synthetic_data_simulation",
+    "injected_defects": [
+      "3 date parse failures (borr_dob_dt)",
+      "2 un-expanded loan statuses (cad_cb)",
+      "1 credit score outside FICO range",
+      "Payment component sum mismatch (MOEND)",
+      "2 orphan source->cad_id records (MOEND)",
+      "1 duplicate in cad_cb (DAILY)"
+    ]
+  },
+  "summary": {
+    "total_tests": 111,
+    "passed": 105,
+    "failed": 6,
+    "pass_rate": 94.6
+  },
+  "results": [
+    {
+      "test_id": "TC-RC-001",
+      "test_name": "Table not empty: default.td_contracts",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31'",
+      "expected": ">0",
+      "actual": 1000,
+      "passed": true,
+      "message": "default.td_contracts has 1000 rows"
+    },
+    {
+      "test_id": "TC-RC-001",
+      "test_name": "Table not empty: work_schema.cad_id",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31'",
+      "expected": ">0",
+      "actual": 1000,
+      "passed": true,
+      "message": "work_schema.cad_id has 1000 rows"
+    },
+    {
+      "test_id": "TC-RC-001",
+      "test_name": "Table not empty: work_schema.cad_cb",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31'",
+      "expected": ">0",
+      "actual": 700,
+      "passed": true,
+      "message": "work_schema.cad_cb has 700 rows"
+    },
+    {
+      "test_id": "TC-RC-001",
+      "test_name": "Table not empty: work_schema.cad_nccb",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31'",
+      "expected": ">0",
+      "actual": 300,
+      "passed": true,
+      "message": "work_schema.cad_nccb has 300 rows"
+    },
+    {
+      "test_id": "TC-RC-001",
+      "test_name": "Table not empty: audit.cad_arrg_dim",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2024-01-31'",
+      "expected": ">0",
+      "actual": 1000,
+      "passed": true,
+      "message": "audit.cad_arrg_dim has 1000 rows"
+    },
+    {
+      "test_id": "TC-RC-001",
+      "test_name": "Table not empty: audit.cad_actg_unit_bal_fact",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31'",
+      "expected": ">0",
+      "actual": 700,
+      "passed": true,
+      "message": "audit.cad_actg_unit_bal_fact has 700 rows"
+    },
+    {
+      "test_id": "TC-RC-001",
+      "test_name": "Table not empty: audit.cad_nc_actg_unit_bal_fact",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31'",
+      "expected": ">0",
+      "actual": 300,
+      "passed": true,
+      "message": "audit.cad_nc_actg_unit_bal_fact has 300 rows"
+    },
+    {
+      "test_id": "TC-RC-002a",
+      "test_name": "Source->cad_id count match (D)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": 500,
+      "actual": 500,
+      "passed": true,
+      "message": "Source=500, cad_id=500"
+    },
+    {
+      "test_id": "TC-RC-002b",
+      "test_name": "Source current->cad_cb count match (D)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' AND ln_stat_cd IN ('ACT','FRB') vs SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": 350,
+      "actual": 350,
+      "passed": true,
+      "message": "Source current=350, cad_cb=350"
+    },
+    {
+      "test_id": "TC-RC-002c",
+      "test_name": "Source non-current->cad_nccb count match (D)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' AND ln_stat_cd IN ('CLO','DFT') vs SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": 150,
+      "actual": 150,
+      "passed": true,
+      "message": "Source non-current=150, cad_nccb=150"
+    },
+    {
+      "test_id": "TC-RC-002d",
+      "test_name": "cad_cb+cad_nccb == source total (D)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' + SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": 500,
+      "actual": 500,
+      "passed": true,
+      "message": "cb+nccb=500, source=500"
+    },
+    {
+      "test_id": "TC-RC-003a",
+      "test_name": "cad_cb -> actg_unit_bal_fact count match (D)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": 350,
+      "actual": 350,
+      "passed": true,
+      "message": "staging=350, audit=350"
+    },
+    {
+      "test_id": "TC-RC-003b",
+      "test_name": "cad_nccb -> nc_actg_unit_bal_fact count match (D)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": 150,
+      "actual": 150,
+      "passed": true,
+      "message": "staging=150, audit=150"
+    },
+    {
+      "test_id": "TC-RC-003c",
+      "test_name": "cad_id -> arrg_dim count match (D)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": 500,
+      "actual": 500,
+      "passed": true,
+      "message": "staging=500, audit=500"
+    },
+    {
+      "test_id": "TC-RC-002a",
+      "test_name": "Source->cad_id count match (M)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": 500,
+      "actual": 500,
+      "passed": true,
+      "message": "Source=500, cad_id=500"
+    },
+    {
+      "test_id": "TC-RC-002b",
+      "test_name": "Source current->cad_cb count match (M)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' AND ln_stat_cd IN ('ACT','FRB') vs SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": 350,
+      "actual": 350,
+      "passed": true,
+      "message": "Source current=350, cad_cb=350"
+    },
+    {
+      "test_id": "TC-RC-002c",
+      "test_name": "Source non-current->cad_nccb count match (M)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' AND ln_stat_cd IN ('CLO','DFT') vs SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": 150,
+      "actual": 150,
+      "passed": true,
+      "message": "Source non-current=150, cad_nccb=150"
+    },
+    {
+      "test_id": "TC-RC-002d",
+      "test_name": "cad_cb+cad_nccb == source total (M)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' + SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": 500,
+      "actual": 500,
+      "passed": true,
+      "message": "cb+nccb=500, source=500"
+    },
+    {
+      "test_id": "TC-RC-003a",
+      "test_name": "cad_cb -> actg_unit_bal_fact count match (M)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": 350,
+      "actual": 350,
+      "passed": true,
+      "message": "staging=350, audit=350"
+    },
+    {
+      "test_id": "TC-RC-003b",
+      "test_name": "cad_nccb -> nc_actg_unit_bal_fact count match (M)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": 150,
+      "actual": 150,
+      "passed": true,
+      "message": "staging=150, audit=150"
+    },
+    {
+      "test_id": "TC-RC-003c",
+      "test_name": "cad_id -> arrg_dim count match (M)",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": 500,
+      "actual": 500,
+      "passed": true,
+      "message": "staging=500, audit=500"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=DAILY present: default.td_contracts",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": ">0",
+      "actual": 500,
+      "passed": true,
+      "message": "default.td_contracts DAILY: 500 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=MOEND present: default.td_contracts",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": ">0",
+      "actual": 500,
+      "passed": true,
+      "message": "default.td_contracts MOEND: 500 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=DAILY present: work_schema.cad_id",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": ">0",
+      "actual": 500,
+      "passed": true,
+      "message": "work_schema.cad_id DAILY: 500 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=MOEND present: work_schema.cad_id",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": ">0",
+      "actual": 500,
+      "passed": true,
+      "message": "work_schema.cad_id MOEND: 500 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=DAILY present: work_schema.cad_cb",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": ">0",
+      "actual": 350,
+      "passed": true,
+      "message": "work_schema.cad_cb DAILY: 350 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=MOEND present: work_schema.cad_cb",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": ">0",
+      "actual": 350,
+      "passed": true,
+      "message": "work_schema.cad_cb MOEND: 350 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=DAILY present: work_schema.cad_nccb",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": ">0",
+      "actual": 150,
+      "passed": true,
+      "message": "work_schema.cad_nccb DAILY: 150 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=MOEND present: work_schema.cad_nccb",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": ">0",
+      "actual": 150,
+      "passed": true,
+      "message": "work_schema.cad_nccb MOEND: 150 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=DAILY present: audit.cad_arrg_dim",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": ">0",
+      "actual": 500,
+      "passed": true,
+      "message": "audit.cad_arrg_dim DAILY: 500 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=MOEND present: audit.cad_arrg_dim",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": ">0",
+      "actual": 500,
+      "passed": true,
+      "message": "audit.cad_arrg_dim MOEND: 500 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=DAILY present: audit.cad_actg_unit_bal_fact",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": ">0",
+      "actual": 350,
+      "passed": true,
+      "message": "audit.cad_actg_unit_bal_fact DAILY: 350 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=MOEND present: audit.cad_actg_unit_bal_fact",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": ">0",
+      "actual": 350,
+      "passed": true,
+      "message": "audit.cad_actg_unit_bal_fact MOEND: 350 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=DAILY present: audit.cad_nc_actg_unit_bal_fact",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": ">0",
+      "actual": 150,
+      "passed": true,
+      "message": "audit.cad_nc_actg_unit_bal_fact DAILY: 150 rows"
+    },
+    {
+      "test_id": "TC-RC-004",
+      "test_name": "data_src_ind=MOEND present: audit.cad_nc_actg_unit_bal_fact",
+      "category": "row_count",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": ">0",
+      "actual": 150,
+      "passed": true,
+      "message": "audit.cad_nc_actg_unit_bal_fact MOEND: 150 rows"
+    },
+    {
+      "test_id": "TC-TF-001a",
+      "test_name": "Date parsing: borr_dob_dt (cad_id)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id ci JOIN default.td_contracts tc   ON ci.ln_acct_nbr = tc.ln_acct_nbr   AND ci.as_of_dt = tc.as_of_dt   AND ci.data_src_ind = tc.data_src_ind WHERE ci.as_of_dt = '2024-01-31'   AND tc.borr_dob_dt IS NOT NULL   AND TRIM(tc.borr_dob_dt) != ''   AND ci.borr_dob_dt IS NULL",
+      "expected": 0,
+      "actual": 3,
+      "passed": false,
+      "message": "3 date parse failures"
+    },
+    {
+      "test_id": "TC-TF-001b",
+      "test_name": "Date parsing: ln_orig_dt (cad_cb)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb cb JOIN default.td_contracts tc   ON cb.ln_acct_nbr = tc.ln_acct_nbr   AND cb.as_of_dt = tc.as_of_dt   AND cb.data_src_ind = tc.data_src_ind WHERE cb.as_of_dt = '2024-01-31'   AND tc.ln_orig_dt IS NOT NULL   AND TRIM(tc.ln_orig_dt) != ''   AND cb.ln_orig_dt IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All ln_orig_dt values parsed successfully"
+    },
+    {
+      "test_id": "TC-TF-001b",
+      "test_name": "Date parsing: ln_mat_dt (cad_cb)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb cb JOIN default.td_contracts tc   ON cb.ln_acct_nbr = tc.ln_acct_nbr   AND cb.as_of_dt = tc.as_of_dt   AND cb.data_src_ind = tc.data_src_ind WHERE cb.as_of_dt = '2024-01-31'   AND tc.ln_mat_dt IS NOT NULL   AND TRIM(tc.ln_mat_dt) != ''   AND cb.ln_mat_dt IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All ln_mat_dt values parsed successfully"
+    },
+    {
+      "test_id": "TC-TF-001b",
+      "test_name": "Date parsing: ln_1st_pmt_dt (cad_cb)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb cb JOIN default.td_contracts tc   ON cb.ln_acct_nbr = tc.ln_acct_nbr   AND cb.as_of_dt = tc.as_of_dt   AND cb.data_src_ind = tc.data_src_ind WHERE cb.as_of_dt = '2024-01-31'   AND tc.ln_1st_pmt_dt IS NOT NULL   AND TRIM(tc.ln_1st_pmt_dt) != ''   AND cb.ln_1st_pmt_dt IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All ln_1st_pmt_dt values parsed successfully"
+    },
+    {
+      "test_id": "TC-TF-001b",
+      "test_name": "Date parsing: ln_nxt_pmt_dt (cad_cb)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb cb JOIN default.td_contracts tc   ON cb.ln_acct_nbr = tc.ln_acct_nbr   AND cb.as_of_dt = tc.as_of_dt   AND cb.data_src_ind = tc.data_src_ind WHERE cb.as_of_dt = '2024-01-31'   AND tc.ln_nxt_pmt_dt IS NOT NULL   AND TRIM(tc.ln_nxt_pmt_dt) != ''   AND cb.ln_nxt_pmt_dt IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All ln_nxt_pmt_dt values parsed successfully"
+    },
+    {
+      "test_id": "TC-TF-002",
+      "test_name": "Amount non-negative: original amount (cad_cb)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31'   AND ln_orig_amt < 0",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All original amount values are non-negative"
+    },
+    {
+      "test_id": "TC-TF-002",
+      "test_name": "Amount non-negative: current balance (cad_cb)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31'   AND ln_curr_bal < 0",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All current balance values are non-negative"
+    },
+    {
+      "test_id": "TC-TF-002",
+      "test_name": "Amount non-negative: monthly payment (cad_cb)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31'   AND ln_pmt_amt < 0",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All monthly payment values are non-negative"
+    },
+    {
+      "test_id": "TC-TF-002",
+      "test_name": "Amount non-negative: escrow balance (cad_cb)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31'   AND ln_escrow_bal < 0",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All escrow balance values are non-negative"
+    },
+    {
+      "test_id": "TC-TF-002b",
+      "test_name": "Amount parsing: annual income (cad_id)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id ci JOIN default.td_contracts tc   ON ci.borr_id = tc.borr_id   AND ci.as_of_dt = tc.as_of_dt   AND ci.data_src_ind = tc.data_src_ind WHERE ci.as_of_dt = '2024-01-31'   AND tc.borr_ann_incm IS NOT NULL   AND TRIM(tc.borr_ann_incm) != ''   AND ci.borr_ann_incm IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All annual_income values parsed successfully"
+    },
+    {
+      "test_id": "TC-TF-003a",
+      "test_name": "Loan status expansion (cad_cb)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31'   AND ln_stat_cd NOT IN ('CLOSED','DEFAULT','FORBEARANCE','ACTIVE')",
+      "expected": 0,
+      "actual": 2,
+      "passed": false,
+      "message": "2 un-expanded loan statuses"
+    },
+    {
+      "test_id": "TC-TF-003b",
+      "test_name": "Borrower status expansion (cad_id)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31'   AND borr_stat_cd NOT IN ('INACTIVE','ACTIVE')",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All borrower statuses correctly expanded"
+    },
+    {
+      "test_id": "TC-TF-003c",
+      "test_name": "Payment type expansion (actg_unit_bal_fact)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31'   AND last_pmt_typ_cd IS NOT NULL   AND last_pmt_typ_cd NOT IN ('REGULAR','PARTIAL','PREPAYMENT','EXTRA')",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All payment types correctly expanded"
+    },
+    {
+      "test_id": "TC-TF-004",
+      "test_name": "Credit score range validation (cad_id)",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31'   AND borr_crdt_scr IS NOT NULL   AND (borr_crdt_scr < 300 OR borr_crdt_scr > 850)",
+      "expected": 0,
+      "actual": 1,
+      "passed": false,
+      "message": "1 credit scores outside 300-850 range"
+    },
+    {
+      "test_id": "TC-TF-005",
+      "test_name": "data_src_ind valid values: default.td_contracts",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31'   AND (data_src_ind IS NULL OR data_src_ind NOT IN ('D','M'))",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All data_src_ind values valid in default.td_contracts"
+    },
+    {
+      "test_id": "TC-TF-005",
+      "test_name": "data_src_ind valid values: work_schema.cad_id",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31'   AND (data_src_ind IS NULL OR data_src_ind NOT IN ('D','M'))",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All data_src_ind values valid in work_schema.cad_id"
+    },
+    {
+      "test_id": "TC-TF-005",
+      "test_name": "data_src_ind valid values: work_schema.cad_cb",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31'   AND (data_src_ind IS NULL OR data_src_ind NOT IN ('D','M'))",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All data_src_ind values valid in work_schema.cad_cb"
+    },
+    {
+      "test_id": "TC-TF-005",
+      "test_name": "data_src_ind valid values: work_schema.cad_nccb",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31'   AND (data_src_ind IS NULL OR data_src_ind NOT IN ('D','M'))",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All data_src_ind values valid in work_schema.cad_nccb"
+    },
+    {
+      "test_id": "TC-TF-005",
+      "test_name": "data_src_ind valid values: audit.cad_arrg_dim",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2024-01-31'   AND (data_src_ind IS NULL OR data_src_ind NOT IN ('D','M'))",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All data_src_ind values valid in audit.cad_arrg_dim"
+    },
+    {
+      "test_id": "TC-TF-005",
+      "test_name": "data_src_ind valid values: audit.cad_actg_unit_bal_fact",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31'   AND (data_src_ind IS NULL OR data_src_ind NOT IN ('D','M'))",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All data_src_ind values valid in audit.cad_actg_unit_bal_fact"
+    },
+    {
+      "test_id": "TC-TF-005",
+      "test_name": "data_src_ind valid values: audit.cad_nc_actg_unit_bal_fact",
+      "category": "transformation",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31'   AND (data_src_ind IS NULL OR data_src_ind NOT IN ('D','M'))",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All data_src_ind values valid in audit.cad_nc_actg_unit_bal_fact"
+    },
+    {
+      "test_id": "TC-AG-001",
+      "test_name": "Balance sum: source vs staging (D)",
+      "category": "aggregate",
+      "sql": "source=SELECT COALESCE(SUM(CAST(REGEXP_REPLACE(ln_curr_bal, ',', '') AS DECIMAL(12,2))), 0) AS total FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'   AND ln_curr_bal IS NOT NULL AND TRIM(ln_curr_bal) != ''; staging=cb+nccb",
+      "expected": "500",
+      "actual": "500",
+      "passed": true,
+      "message": "Source total=500, Staging total=500"
+    },
+    {
+      "test_id": "TC-AG-002a",
+      "test_name": "Original amount sum: cad_cb vs actg_fact (D)",
+      "category": "aggregate",
+      "sql": "SELECT COALESCE(SUM(ln_orig_amt), 0) AS total FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' vs SELECT COALESCE(SUM(ln_orig_amt), 0) AS total FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "350",
+      "actual": "350",
+      "passed": true,
+      "message": "Staging=350, Audit=350"
+    },
+    {
+      "test_id": "TC-AG-002b",
+      "test_name": "Original amount sum: cad_nccb vs nc_actg_fact (D)",
+      "category": "aggregate",
+      "sql": "SELECT COALESCE(SUM(ln_orig_amt), 0) AS total FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' vs SELECT COALESCE(SUM(ln_orig_amt), 0) AS total FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "150",
+      "actual": "150",
+      "passed": true,
+      "message": "Staging=150, Audit=150"
+    },
+    {
+      "test_id": "TC-AG-003",
+      "test_name": "Escrow balance sum: staging vs audit (D)",
+      "category": "aggregate",
+      "sql": "SELECT COALESCE(SUM(ln_escrow_bal), 0) AS total FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' vs SELECT COALESCE(SUM(ln_escrow_bal), 0) AS total FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "350",
+      "actual": "350",
+      "passed": true,
+      "message": "Staging=350, Audit=350"
+    },
+    {
+      "test_id": "TC-AG-004",
+      "test_name": "Payment component sum check (D)",
+      "category": "aggregate",
+      "sql": "SELECT   COALESCE(SUM(last_pmt_amt), 0) AS total_pmt,   COALESCE(SUM(last_pmt_prin_amt), 0) +   COALESCE(SUM(last_pmt_int_amt), 0) +   COALESCE(SUM(last_pmt_escrow_amt), 0) +   COALESCE(SUM(last_pmt_late_fee), 0) AS component_sum FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "875000.00",
+      "actual": "875000.00",
+      "passed": true,
+      "message": "total_pmt=875000.00, components=875000.00"
+    },
+    {
+      "test_id": "TC-AG-005",
+      "test_name": "Annual income sum: source vs cad_id (D)",
+      "category": "aggregate",
+      "sql": "SELECT COALESCE(SUM(CAST(REGEXP_REPLACE(borr_ann_incm, ',', '') AS DECIMAL(12,2))), 0) AS total FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'   AND borr_ann_incm IS NOT NULL AND TRIM(borr_ann_incm) != '' vs SELECT COALESCE(SUM(borr_ann_incm), 0) AS total FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "500",
+      "actual": "500",
+      "passed": true,
+      "message": "Source=500, Staging=500"
+    },
+    {
+      "test_id": "TC-AG-001",
+      "test_name": "Balance sum: source vs staging (M)",
+      "category": "aggregate",
+      "sql": "source=SELECT COALESCE(SUM(CAST(REGEXP_REPLACE(ln_curr_bal, ',', '') AS DECIMAL(12,2))), 0) AS total FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'   AND ln_curr_bal IS NOT NULL AND TRIM(ln_curr_bal) != ''; staging=cb+nccb",
+      "expected": "500",
+      "actual": "500",
+      "passed": true,
+      "message": "Source total=500, Staging total=500"
+    },
+    {
+      "test_id": "TC-AG-002a",
+      "test_name": "Original amount sum: cad_cb vs actg_fact (M)",
+      "category": "aggregate",
+      "sql": "SELECT COALESCE(SUM(ln_orig_amt), 0) AS total FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' vs SELECT COALESCE(SUM(ln_orig_amt), 0) AS total FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "350",
+      "actual": "350",
+      "passed": true,
+      "message": "Staging=350, Audit=350"
+    },
+    {
+      "test_id": "TC-AG-002b",
+      "test_name": "Original amount sum: cad_nccb vs nc_actg_fact (M)",
+      "category": "aggregate",
+      "sql": "SELECT COALESCE(SUM(ln_orig_amt), 0) AS total FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' vs SELECT COALESCE(SUM(ln_orig_amt), 0) AS total FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "150",
+      "actual": "150",
+      "passed": true,
+      "message": "Staging=150, Audit=150"
+    },
+    {
+      "test_id": "TC-AG-003",
+      "test_name": "Escrow balance sum: staging vs audit (M)",
+      "category": "aggregate",
+      "sql": "SELECT COALESCE(SUM(ln_escrow_bal), 0) AS total FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' vs SELECT COALESCE(SUM(ln_escrow_bal), 0) AS total FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "350",
+      "actual": "350",
+      "passed": true,
+      "message": "Staging=350, Audit=350"
+    },
+    {
+      "test_id": "TC-AG-004",
+      "test_name": "Payment component sum check (M)",
+      "category": "aggregate",
+      "sql": "SELECT   COALESCE(SUM(last_pmt_amt), 0) AS total_pmt,   COALESCE(SUM(last_pmt_prin_amt), 0) +   COALESCE(SUM(last_pmt_int_amt), 0) +   COALESCE(SUM(last_pmt_escrow_amt), 0) +   COALESCE(SUM(last_pmt_late_fee), 0) AS component_sum FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "875000.00",
+      "actual": "873250.00",
+      "passed": false,
+      "message": "total_pmt=875000.00, components=873250.00"
+    },
+    {
+      "test_id": "TC-AG-005",
+      "test_name": "Annual income sum: source vs cad_id (M)",
+      "category": "aggregate",
+      "sql": "SELECT COALESCE(SUM(CAST(REGEXP_REPLACE(borr_ann_incm, ',', '') AS DECIMAL(12,2))), 0) AS total FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'   AND borr_ann_incm IS NOT NULL AND TRIM(borr_ann_incm) != '' vs SELECT COALESCE(SUM(borr_ann_incm), 0) AS total FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "500",
+      "actual": "500",
+      "passed": true,
+      "message": "Source=500, Staging=500"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: default.td_contracts (D)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "<=10.0% change",
+      "actual": "2.0% (prev=490, curr=500)",
+      "passed": true,
+      "message": "default.td_contracts: 490 -> 500 (2.0% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: work_schema.cad_id (D)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "<=10.0% change",
+      "actual": "2.0% (prev=490, curr=500)",
+      "passed": true,
+      "message": "work_schema.cad_id: 490 -> 500 (2.0% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: work_schema.cad_cb (D)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "<=10.0% change",
+      "actual": "1.4% (prev=345, curr=350)",
+      "passed": true,
+      "message": "work_schema.cad_cb: 345 -> 350 (1.4% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: work_schema.cad_nccb (D)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "<=10.0% change",
+      "actual": "3.4% (prev=145, curr=150)",
+      "passed": true,
+      "message": "work_schema.cad_nccb: 145 -> 150 (3.4% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: audit.cad_arrg_dim (D)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "<=10.0% change",
+      "actual": "2.0% (prev=490, curr=500)",
+      "passed": true,
+      "message": "audit.cad_arrg_dim: 490 -> 500 (2.0% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: audit.cad_actg_unit_bal_fact (D)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "<=10.0% change",
+      "actual": "1.4% (prev=345, curr=350)",
+      "passed": true,
+      "message": "audit.cad_actg_unit_bal_fact: 345 -> 350 (1.4% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: audit.cad_nc_actg_unit_bal_fact (D)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' vs SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "<=10.0% change",
+      "actual": "3.4% (prev=145, curr=150)",
+      "passed": true,
+      "message": "audit.cad_nc_actg_unit_bal_fact: 145 -> 150 (3.4% change)"
+    },
+    {
+      "test_id": "TC-RG-002",
+      "test_name": "Balance regression: current balance (D)",
+      "category": "regression",
+      "sql": "SELECT COALESCE(SUM(ln_curr_bal), 0) AS total FROM work_schema.cad_cb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' vs SELECT COALESCE(SUM(ln_curr_bal), 0) AS total FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "<=15.0% change",
+      "actual": "1.4% (prev=345.0, curr=350.0)",
+      "passed": true,
+      "message": "current balance: 345.0 -> 350.0 (1.4%)"
+    },
+    {
+      "test_id": "TC-RG-002",
+      "test_name": "Balance regression: non-current balance (D)",
+      "category": "regression",
+      "sql": "SELECT COALESCE(SUM(ln_curr_bal), 0) AS total FROM work_schema.cad_nccb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' vs SELECT COALESCE(SUM(ln_curr_bal), 0) AS total FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'",
+      "expected": "<=15.0% change",
+      "actual": "3.4% (prev=145.0, curr=150.0)",
+      "passed": true,
+      "message": "non-current balance: 145.0 -> 150.0 (3.4%)"
+    },
+    {
+      "test_id": "TC-RG-003",
+      "test_name": "Status distribution regression (D)",
+      "category": "regression",
+      "sql": "SELECT ln_stat_cd, COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'D' GROUP BY ln_stat_cd ORDER BY ln_stat_cd vs SELECT ln_stat_cd, COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D' GROUP BY ln_stat_cd ORDER BY ln_stat_cd",
+      "expected": "no disappeared statuses",
+      "actual": "disappeared=set(), new=set()",
+      "passed": true,
+      "message": "Previous statuses={'FORBEARANCE', 'ACTIVE'}, Current={'FORBEARANCE', 'ACTIVE'}"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: default.td_contracts (M)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM default.td_contracts WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "<=10.0% change",
+      "actual": "2.0% (prev=490, curr=500)",
+      "passed": true,
+      "message": "default.td_contracts: 490 -> 500 (2.0% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: work_schema.cad_id (M)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "<=10.0% change",
+      "actual": "2.0% (prev=490, curr=500)",
+      "passed": true,
+      "message": "work_schema.cad_id: 490 -> 500 (2.0% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: work_schema.cad_cb (M)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "<=10.0% change",
+      "actual": "1.4% (prev=345, curr=350)",
+      "passed": true,
+      "message": "work_schema.cad_cb: 345 -> 350 (1.4% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: work_schema.cad_nccb (M)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "<=10.0% change",
+      "actual": "3.4% (prev=145, curr=150)",
+      "passed": true,
+      "message": "work_schema.cad_nccb: 145 -> 150 (3.4% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: audit.cad_arrg_dim (M)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM audit.cad_arrg_dim WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "<=10.0% change",
+      "actual": "2.0% (prev=490, curr=500)",
+      "passed": true,
+      "message": "audit.cad_arrg_dim: 490 -> 500 (2.0% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: audit.cad_actg_unit_bal_fact (M)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "<=10.0% change",
+      "actual": "1.4% (prev=345, curr=350)",
+      "passed": true,
+      "message": "audit.cad_actg_unit_bal_fact: 345 -> 350 (1.4% change)"
+    },
+    {
+      "test_id": "TC-RG-001",
+      "test_name": "Row count regression: audit.cad_nc_actg_unit_bal_fact (M)",
+      "category": "regression",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' vs SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "<=10.0% change",
+      "actual": "3.4% (prev=145, curr=150)",
+      "passed": true,
+      "message": "audit.cad_nc_actg_unit_bal_fact: 145 -> 150 (3.4% change)"
+    },
+    {
+      "test_id": "TC-RG-002",
+      "test_name": "Balance regression: current balance (M)",
+      "category": "regression",
+      "sql": "SELECT COALESCE(SUM(ln_curr_bal), 0) AS total FROM work_schema.cad_cb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' vs SELECT COALESCE(SUM(ln_curr_bal), 0) AS total FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "<=15.0% change",
+      "actual": "1.4% (prev=345.0, curr=350.0)",
+      "passed": true,
+      "message": "current balance: 345.0 -> 350.0 (1.4%)"
+    },
+    {
+      "test_id": "TC-RG-002",
+      "test_name": "Balance regression: non-current balance (M)",
+      "category": "regression",
+      "sql": "SELECT COALESCE(SUM(ln_curr_bal), 0) AS total FROM work_schema.cad_nccb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' vs SELECT COALESCE(SUM(ln_curr_bal), 0) AS total FROM work_schema.cad_nccb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected": "<=15.0% change",
+      "actual": "3.4% (prev=145.0, curr=150.0)",
+      "passed": true,
+      "message": "non-current balance: 145.0 -> 150.0 (3.4%)"
+    },
+    {
+      "test_id": "TC-RG-003",
+      "test_name": "Status distribution regression (M)",
+      "category": "regression",
+      "sql": "SELECT ln_stat_cd, COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2023-12-31' AND data_src_ind = 'M' GROUP BY ln_stat_cd ORDER BY ln_stat_cd vs SELECT ln_stat_cd, COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M' GROUP BY ln_stat_cd ORDER BY ln_stat_cd",
+      "expected": "no disappeared statuses",
+      "actual": "disappeared=set(), new=set()",
+      "passed": true,
+      "message": "Previous statuses={'FORBEARANCE', 'ACTIVE'}, Current={'FORBEARANCE', 'ACTIVE'}"
+    },
+    {
+      "test_id": "TC-IG-001",
+      "test_name": "Partition alignment across all tables",
+      "category": "integration",
+      "sql": "COUNT(*) per table for as_of_dt",
+      "expected": "all 7 tables populated",
+      "actual": "7/7 populated",
+      "passed": true,
+      "message": "All tables have data for the partition"
+    },
+    {
+      "test_id": "TC-IG-002",
+      "test_name": "Source->cad_id join integrity (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts tc LEFT JOIN work_schema.cad_id ci   ON tc.ln_acct_nbr = ci.ln_acct_nbr   AND tc.as_of_dt = ci.as_of_dt   AND tc.data_src_ind = ci.data_src_ind WHERE tc.as_of_dt = '2024-01-31'   AND tc.data_src_ind = 'D'   AND ci.ln_acct_nbr IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All source records joined to cad_id"
+    },
+    {
+      "test_id": "TC-IG-003a",
+      "test_name": "cad_cb -> actg_fact join integrity (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb cb LEFT JOIN audit.cad_actg_unit_bal_fact af   ON cb.ln_acct_nbr = af.ln_acct_nbr   AND cb.as_of_dt = af.as_of_dt   AND cb.data_src_ind = af.data_src_ind WHERE cb.as_of_dt = '2024-01-31'   AND cb.data_src_ind = 'D'   AND af.ln_acct_nbr IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All cad_cb -> actg_fact records joined"
+    },
+    {
+      "test_id": "TC-IG-003b",
+      "test_name": "cad_nccb -> nc_actg_fact join integrity (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb nc LEFT JOIN audit.cad_nc_actg_unit_bal_fact nf   ON nc.ln_acct_nbr = nf.ln_acct_nbr   AND nc.as_of_dt = nf.as_of_dt   AND nc.data_src_ind = nf.data_src_ind WHERE nc.as_of_dt = '2024-01-31'   AND nc.data_src_ind = 'D'   AND nf.ln_acct_nbr IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All cad_nccb -> nc_actg_fact records joined"
+    },
+    {
+      "test_id": "TC-IG-004a",
+      "test_name": "Dim FK integrity: actg_fact (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact f LEFT JOIN audit.cad_arrg_dim d   ON f.arrg_dim_sk = d.arrg_dim_sk   AND f.as_of_dt = d.as_of_dt WHERE f.as_of_dt = '2024-01-31'   AND f.data_src_ind = 'D'   AND d.arrg_dim_sk IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All actg_fact arrg_dim_sk references valid"
+    },
+    {
+      "test_id": "TC-IG-004b",
+      "test_name": "Dim FK integrity: nc_actg_fact (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact f LEFT JOIN audit.cad_arrg_dim d   ON f.arrg_dim_sk = d.arrg_dim_sk   AND f.as_of_dt = d.as_of_dt WHERE f.as_of_dt = '2024-01-31'   AND f.data_src_ind = 'D'   AND d.arrg_dim_sk IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All nc_actg_fact arrg_dim_sk references valid"
+    },
+    {
+      "test_id": "TC-IG-005a",
+      "test_name": "No duplicates: work_schema.cad_id (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM work_schema.cad_id   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "No duplicates in work_schema.cad_id"
+    },
+    {
+      "test_id": "TC-IG-005b",
+      "test_name": "No duplicates: work_schema.cad_cb (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM work_schema.cad_cb   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 1,
+      "passed": false,
+      "message": "1 duplicate key groups in work_schema.cad_cb"
+    },
+    {
+      "test_id": "TC-IG-005c",
+      "test_name": "No duplicates: work_schema.cad_nccb (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM work_schema.cad_nccb   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "No duplicates in work_schema.cad_nccb"
+    },
+    {
+      "test_id": "TC-IG-005d",
+      "test_name": "No duplicates: audit.cad_actg_unit_bal_fact (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM audit.cad_actg_unit_bal_fact   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "No duplicates in audit.cad_actg_unit_bal_fact"
+    },
+    {
+      "test_id": "TC-IG-005e",
+      "test_name": "No duplicates: audit.cad_nc_actg_unit_bal_fact (D)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM audit.cad_nc_actg_unit_bal_fact   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "No duplicates in audit.cad_nc_actg_unit_bal_fact"
+    },
+    {
+      "test_id": "TC-IG-002",
+      "test_name": "Source->cad_id join integrity (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM default.td_contracts tc LEFT JOIN work_schema.cad_id ci   ON tc.ln_acct_nbr = ci.ln_acct_nbr   AND tc.as_of_dt = ci.as_of_dt   AND tc.data_src_ind = ci.data_src_ind WHERE tc.as_of_dt = '2024-01-31'   AND tc.data_src_ind = 'M'   AND ci.ln_acct_nbr IS NULL",
+      "expected": 0,
+      "actual": 2,
+      "passed": false,
+      "message": "2 source records missing from cad_id"
+    },
+    {
+      "test_id": "TC-IG-003a",
+      "test_name": "cad_cb -> actg_fact join integrity (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb cb LEFT JOIN audit.cad_actg_unit_bal_fact af   ON cb.ln_acct_nbr = af.ln_acct_nbr   AND cb.as_of_dt = af.as_of_dt   AND cb.data_src_ind = af.data_src_ind WHERE cb.as_of_dt = '2024-01-31'   AND cb.data_src_ind = 'M'   AND af.ln_acct_nbr IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All cad_cb -> actg_fact records joined"
+    },
+    {
+      "test_id": "TC-IG-003b",
+      "test_name": "cad_nccb -> nc_actg_fact join integrity (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM work_schema.cad_nccb nc LEFT JOIN audit.cad_nc_actg_unit_bal_fact nf   ON nc.ln_acct_nbr = nf.ln_acct_nbr   AND nc.as_of_dt = nf.as_of_dt   AND nc.data_src_ind = nf.data_src_ind WHERE nc.as_of_dt = '2024-01-31'   AND nc.data_src_ind = 'M'   AND nf.ln_acct_nbr IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All cad_nccb -> nc_actg_fact records joined"
+    },
+    {
+      "test_id": "TC-IG-004a",
+      "test_name": "Dim FK integrity: actg_fact (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_actg_unit_bal_fact f LEFT JOIN audit.cad_arrg_dim d   ON f.arrg_dim_sk = d.arrg_dim_sk   AND f.as_of_dt = d.as_of_dt WHERE f.as_of_dt = '2024-01-31'   AND f.data_src_ind = 'M'   AND d.arrg_dim_sk IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All actg_fact arrg_dim_sk references valid"
+    },
+    {
+      "test_id": "TC-IG-004b",
+      "test_name": "Dim FK integrity: nc_actg_fact (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS cnt FROM audit.cad_nc_actg_unit_bal_fact f LEFT JOIN audit.cad_arrg_dim d   ON f.arrg_dim_sk = d.arrg_dim_sk   AND f.as_of_dt = d.as_of_dt WHERE f.as_of_dt = '2024-01-31'   AND f.data_src_ind = 'M'   AND d.arrg_dim_sk IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "All nc_actg_fact arrg_dim_sk references valid"
+    },
+    {
+      "test_id": "TC-IG-005a",
+      "test_name": "No duplicates: work_schema.cad_id (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM work_schema.cad_id   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "No duplicates in work_schema.cad_id"
+    },
+    {
+      "test_id": "TC-IG-005b",
+      "test_name": "No duplicates: work_schema.cad_cb (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM work_schema.cad_cb   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "No duplicates in work_schema.cad_cb"
+    },
+    {
+      "test_id": "TC-IG-005c",
+      "test_name": "No duplicates: work_schema.cad_nccb (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM work_schema.cad_nccb   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "No duplicates in work_schema.cad_nccb"
+    },
+    {
+      "test_id": "TC-IG-005d",
+      "test_name": "No duplicates: audit.cad_actg_unit_bal_fact (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM audit.cad_actg_unit_bal_fact   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "No duplicates in audit.cad_actg_unit_bal_fact"
+    },
+    {
+      "test_id": "TC-IG-005e",
+      "test_name": "No duplicates: audit.cad_nc_actg_unit_bal_fact (M)",
+      "category": "integration",
+      "sql": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM audit.cad_nc_actg_unit_bal_fact   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "No duplicates in audit.cad_nc_actg_unit_bal_fact"
+    },
+    {
+      "test_id": "TC-IG-006a",
+      "test_name": "DAILY/MOEND account alignment: work_schema.cad_cb",
+      "category": "integration",
+      "sql": "SELECT COUNT(DISTINCT d.ln_acct_nbr) AS cnt FROM work_schema.cad_cb d LEFT JOIN work_schema.cad_cb m   ON d.ln_acct_nbr = m.ln_acct_nbr AND m.as_of_dt = '2024-01-31' AND m.data_src_ind = 'M' WHERE d.as_of_dt = '2024-01-31' AND d.data_src_ind = 'D'   AND m.ln_acct_nbr IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "DAILY and MOEND account sets aligned in work_schema.cad_cb"
+    },
+    {
+      "test_id": "TC-IG-006b",
+      "test_name": "DAILY/MOEND account alignment: work_schema.cad_nccb",
+      "category": "integration",
+      "sql": "SELECT COUNT(DISTINCT d.ln_acct_nbr) AS cnt FROM work_schema.cad_nccb d LEFT JOIN work_schema.cad_nccb m   ON d.ln_acct_nbr = m.ln_acct_nbr AND m.as_of_dt = '2024-01-31' AND m.data_src_ind = 'M' WHERE d.as_of_dt = '2024-01-31' AND d.data_src_ind = 'D'   AND m.ln_acct_nbr IS NULL",
+      "expected": 0,
+      "actual": 0,
+      "passed": true,
+      "message": "DAILY and MOEND account sets aligned in work_schema.cad_nccb"
+    }
+  ]
+}

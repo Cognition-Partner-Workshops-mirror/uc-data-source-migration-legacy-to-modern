@@ -1,0 +1,77 @@
+================================================================================
+HIVE DATA VALIDATION — EXECUTION SUMMARY REPORT
+================================================================================
+
+Run Parameters:
+  as_of_dt (current):  2024-01-31
+  as_of_dt (previous): 2023-12-31
+  Execution time:      0.0s
+  JDBC URL:            SYNTHETIC_DATA (no live Hive connection)
+  Report generated:    2026-05-12T19:43:38.466751
+
+--------------------------------------------------------------------------------
+OVERALL RESULTS
+--------------------------------------------------------------------------------
+  Total tests:   111
+  Passed:        105
+  Failed:        6
+  Pass rate:     94.6%
+
+--------------------------------------------------------------------------------
+RESULTS BY CATEGORY
+--------------------------------------------------------------------------------
+  [FAIL] aggregate             11/12 passed  (1 failed)
+  [FAIL] integration           21/23 passed  (2 failed)
+  [PASS] regression            20/20 passed  (0 failed)
+  [PASS] row_count             35/35 passed  (0 failed)
+  [FAIL] transformation        18/21 passed  (3 failed)
+
+--------------------------------------------------------------------------------
+FAILED TEST DETAILS
+--------------------------------------------------------------------------------
+  [1] TC-TF-001a — Date parsing: borr_dob_dt (cad_id)
+      Category:  transformation
+      Expected:  0
+      Actual:    3
+      Message:   3 date parse failures
+      SQL:       SELECT COUNT(*) AS cnt FROM work_schema.cad_id ci JOIN default.td_contracts tc   ON ci.ln_acct_nbr = tc.ln_acct_nbr   AND ci.as_of_dt = tc.as_of_dt   AND ci.data_src_ind = tc.data_src_ind WHERE ci.as_
+
+  [2] TC-TF-003a — Loan status expansion (cad_cb)
+      Category:  transformation
+      Expected:  0
+      Actual:    2
+      Message:   2 un-expanded loan statuses
+      SQL:       SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31'   AND ln_stat_cd NOT IN ('CLOSED','DEFAULT','FORBEARANCE','ACTIVE')
+
+  [3] TC-TF-004 — Credit score range validation (cad_id)
+      Category:  transformation
+      Expected:  0
+      Actual:    1
+      Message:   1 credit scores outside 300-850 range
+      SQL:       SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31'   AND borr_crdt_scr IS NOT NULL   AND (borr_crdt_scr < 300 OR borr_crdt_scr > 850)
+
+  [4] TC-AG-004 — Payment component sum check (M)
+      Category:  aggregate
+      Expected:  875000.00
+      Actual:    873250.00
+      Message:   total_pmt=875000.00, components=873250.00
+      SQL:       SELECT   COALESCE(SUM(last_pmt_amt), 0) AS total_pmt,   COALESCE(SUM(last_pmt_prin_amt), 0) +   COALESCE(SUM(last_pmt_int_amt), 0) +   COALESCE(SUM(last_pmt_escrow_amt), 0) +   COALESCE(SUM(last_pmt_l
+
+  [5] TC-IG-005b — No duplicates: work_schema.cad_cb (D)
+      Category:  integration
+      Expected:  0
+      Actual:    1
+      Message:   1 duplicate key groups in work_schema.cad_cb
+      SQL:       SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM work_schema.cad_cb   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'   GROUP BY ln_acct_nbr, data_src
+
+  [6] TC-IG-002 — Source->cad_id join integrity (M)
+      Category:  integration
+      Expected:  0
+      Actual:    2
+      Message:   2 source records missing from cad_id
+      SQL:       SELECT COUNT(*) AS cnt FROM default.td_contracts tc LEFT JOIN work_schema.cad_id ci   ON tc.ln_acct_nbr = ci.ln_acct_nbr   AND tc.as_of_dt = ci.as_of_dt   AND tc.data_src_ind = ci.data_src_ind WHERE t
+
+
+================================================================================
+END OF REPORT
+================================================================================
