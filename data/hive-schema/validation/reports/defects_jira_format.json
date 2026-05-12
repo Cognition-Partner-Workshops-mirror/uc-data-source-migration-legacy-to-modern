@@ -1,0 +1,185 @@
+[
+  {
+    "jira_project": "CAD",
+    "issue_type": "Bug",
+    "defect_id": "CAD-DEF-001",
+    "test_case_id": "TC-TF-001a",
+    "reporter": "Validation Automation",
+    "created_date": "2026-05-12",
+    "environment": "Hive / Beeline JDBC \u2014 Synthetic Data Simulation",
+    "snapshot_date": "2024-01-31",
+    "summary": "[CAD] Date Parsing Failure \u2014 borr_dob_dt contains NULL for 3 records in cad_id",
+    "description": "During the ETL transformation from source (default.td_contracts) to staging (work_schema.cad_id), the borrower date of birth column (borr_dob_dt) failed to parse for 3 records. The source table contains valid MM/DD/YYYY string values for these records, but the staging table has NULL after the STRING-to-DATE conversion.\n\nThis indicates the date parsing logic (expected format: MM/DD/YYYY) does not handle edge-case formats such as single-digit month/day (e.g., 1/5/1990 vs 01/05/1990) or other non-standard date representations present in the legacy CDW data.",
+    "steps_to_reproduce": "1. Load synthetic data into default.td_contracts for as_of_dt = '2024-01-31'\n2. Execute the ETL pipeline to populate work_schema.cad_id\n3. Run validation query:\n   SELECT COUNT(*) FROM default.td_contracts tc\n   JOIN work_schema.cad_id ci ON tc.ln_acct_nbr = ci.ln_acct_nbr\n     AND tc.as_of_dt = ci.as_of_dt\n   WHERE tc.as_of_dt = '2024-01-31'\n     AND tc.borr_dob_dt IS NOT NULL\n     AND TRIM(tc.borr_dob_dt) != ''\n     AND ci.borr_dob_dt IS NULL\n4. Observe: query returns 3 (expected: 0)",
+    "expected_result": "0 records with NULL borr_dob_dt in cad_id when source has a valid date string.",
+    "actual_result": "3 records have NULL borr_dob_dt in cad_id despite non-empty source values.",
+    "evidence": {
+      "sql_query": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id ci JOIN default.td_contracts tc   ON ci.ln_acct_nbr = tc.ln_acct_nbr   AND ci.as_of_dt = tc.as_of_dt   AND ci.data_src_ind = tc.data_src_ind WHERE ci.as_of_dt = '2024-01-31'   AND tc.borr_dob_dt IS NOT NULL   AND TRIM(tc.borr_dob_dt) != ''   AND ci.borr_dob_dt IS NULL",
+      "expected_value": "0",
+      "actual_value": "3",
+      "validation_message": "3 date parse failures"
+    },
+    "priority": "High",
+    "severity": "Major",
+    "component": "ETL \u2014 Date Transformation",
+    "labels": [
+      "data-quality",
+      "date-parsing",
+      "staging-layer"
+    ],
+    "linked_user_story": "US-CAD-101: As a data engineer, I need all borrower date fields (borr_dob_dt) correctly parsed from MM/DD/YYYY strings to DATE type during the source-to-staging transformation, so that downstream age calculations and regulatory reporting are accurate."
+  },
+  {
+    "jira_project": "CAD",
+    "issue_type": "Bug",
+    "defect_id": "CAD-DEF-002",
+    "test_case_id": "TC-TF-003a",
+    "reporter": "Validation Automation",
+    "created_date": "2026-05-12",
+    "environment": "Hive / Beeline JDBC \u2014 Synthetic Data Simulation",
+    "snapshot_date": "2024-01-31",
+    "summary": "[CAD] Un-expanded Loan Status Codes \u2014 2 records in cad_cb retain raw CDW codes",
+    "description": "The loan status code expansion transformation is incomplete. 2 records in work_schema.cad_cb still contain raw CDW abbreviations (e.g., 'ACT') instead of the expanded values defined in the mapping document ('ACTIVE', 'CLOSED', 'DEFAULT', 'FORBEARANCE').\n\nThe column_mappings.md specifies that ln_stat_cd must be expanded via:\n  ACT \u2192 ACTIVE, CLO \u2192 CLOSED, DFT \u2192 DEFAULT, FRB \u2192 FORBEARANCE\n\nThe CASE/WHEN statement in the ETL transform may have a missing branch or a typo in one of the code values.",
+    "steps_to_reproduce": "1. Load synthetic data into default.td_contracts for as_of_dt = '2024-01-31'\n2. Execute the ETL pipeline to populate work_schema.cad_cb\n3. Run validation query:\n   SELECT COUNT(*) FROM work_schema.cad_cb\n   WHERE as_of_dt = '2024-01-31'\n     AND ln_stat_cd NOT IN ('ACTIVE','CLOSED','DEFAULT','FORBEARANCE')\n4. Observe: query returns 2 (expected: 0)",
+    "expected_result": "0 records with un-expanded status codes. All ln_stat_cd values should be one of: ACTIVE, CLOSED, DEFAULT, FORBEARANCE.",
+    "actual_result": "2 records contain raw CDW status codes that were not expanded during transformation.",
+    "evidence": {
+      "sql_query": "SELECT COUNT(*) AS cnt FROM work_schema.cad_cb WHERE as_of_dt = '2024-01-31'   AND ln_stat_cd NOT IN ('CLOSED','DEFAULT','FORBEARANCE','ACTIVE')",
+      "expected_value": "0",
+      "actual_value": "2",
+      "validation_message": "2 un-expanded loan statuses"
+    },
+    "priority": "High",
+    "severity": "Major",
+    "component": "ETL \u2014 Status Code Expansion",
+    "labels": [
+      "data-quality",
+      "status-codes",
+      "staging-layer"
+    ],
+    "linked_user_story": "US-CAD-103: As a data analyst, I need all status code columns expanded from CDW abbreviations to full descriptive values (per column_mappings.md) so that reports and filters use consistent, human-readable status labels."
+  },
+  {
+    "jira_project": "CAD",
+    "issue_type": "Bug",
+    "defect_id": "CAD-DEF-003",
+    "test_case_id": "TC-TF-004",
+    "reporter": "Validation Automation",
+    "created_date": "2026-05-12",
+    "environment": "Hive / Beeline JDBC \u2014 Synthetic Data Simulation",
+    "snapshot_date": "2024-01-31",
+    "summary": "[CAD] Credit Score Out of FICO Range \u2014 1 record in cad_id has borr_crdt_scr outside 300\u2013850",
+    "description": "1 record in work_schema.cad_id has a credit score (borr_crdt_scr) that falls outside the valid FICO range of 300\u2013850. The source column in td_contracts stores credit scores as STRING; the ETL converts them to INT. This out-of-range value could be caused by:\n  - A malformed string in the source (e.g., '0', '999', negative, or non-numeric)\n  - A parse error that produced an incorrect integer\n  - A genuine source data quality issue from the legacy CDW\n\nCredit scores outside the 300\u2013850 range should be flagged, quarantined, or defaulted to NULL to prevent invalid inputs to risk models.",
+    "steps_to_reproduce": "1. Load synthetic data into default.td_contracts for as_of_dt = '2024-01-31'\n2. Execute the ETL pipeline to populate work_schema.cad_id\n3. Run validation query:\n   SELECT COUNT(*) FROM work_schema.cad_id\n   WHERE as_of_dt = '2024-01-31'\n     AND (borr_crdt_scr < 300 OR borr_crdt_scr > 850)\n4. Observe: query returns 1 (expected: 0)",
+    "expected_result": "0 records with credit scores outside the 300\u2013850 FICO range.",
+    "actual_result": "1 record has borr_crdt_scr outside the valid range.",
+    "evidence": {
+      "sql_query": "SELECT COUNT(*) AS cnt FROM work_schema.cad_id WHERE as_of_dt = '2024-01-31'   AND borr_crdt_scr IS NOT NULL   AND (borr_crdt_scr < 300 OR borr_crdt_scr > 850)",
+      "expected_value": "0",
+      "actual_value": "1",
+      "validation_message": "1 credit scores outside 300-850 range"
+    },
+    "priority": "Medium",
+    "severity": "Moderate",
+    "component": "ETL \u2014 Type Conversion & Validation",
+    "labels": [
+      "data-quality",
+      "credit-score",
+      "range-validation"
+    ],
+    "linked_user_story": "US-CAD-105: As a risk analyst, I need borrower credit scores correctly converted from STRING to INT and validated within the FICO range (300\u2013850) so that credit risk models and underwriting decisions are based on valid data."
+  },
+  {
+    "jira_project": "CAD",
+    "issue_type": "Bug",
+    "defect_id": "CAD-DEF-004",
+    "test_case_id": "TC-AG-004",
+    "reporter": "Validation Automation",
+    "created_date": "2026-05-12",
+    "environment": "Hive / Beeline JDBC \u2014 Synthetic Data Simulation",
+    "snapshot_date": "2024-01-31",
+    "summary": "[CAD] Payment Component Sum Mismatch \u2014 $1,750 delta in MOEND actg_unit_bal_fact",
+    "description": "For the MOEND snapshot (data_src_ind = 'M'), the total payment amount (SUM of last_pmt_amt = $875,000.00) does not equal the sum of payment components (last_pmt_prin_amt + last_pmt_int_amt + last_pmt_escrow_amt + last_pmt_late_fee_amt = $873,250.00).\n\nDelta: $1,750.00 (0.2% of total)\n\nThis mismatch indicates either:\n  - A rounding error in the DECIMAL arithmetic during ETL\n  - A missing payment component not captured in the four standard buckets\n  - An incorrect source-to-audit mapping for one of the component columns\n\nNote: The DAILY snapshot (data_src_ind = 'D') passes this check with components summing exactly to the total.",
+    "steps_to_reproduce": "1. Load synthetic data for as_of_dt = '2024-01-31'\n2. Execute the ETL pipeline through to audit.cad_actg_unit_bal_fact\n3. Run validation query:\n   SELECT\n     SUM(last_pmt_amt) AS total_pmt,\n     SUM(last_pmt_prin_amt + last_pmt_int_amt +\n         last_pmt_escrow_amt + last_pmt_late_fee_amt) AS component_sum\n   FROM audit.cad_actg_unit_bal_fact\n   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'\n4. Observe: total_pmt = 875000.00, component_sum = 873250.00 (delta = $1,750)",
+    "expected_result": "SUM(last_pmt_amt) = SUM(last_pmt_prin_amt + last_pmt_int_amt + last_pmt_escrow_amt + last_pmt_late_fee_amt) within tolerance of $0.01.",
+    "actual_result": "total_pmt = $875,000.00, component_sum = $873,250.00. Delta = $1,750.00 exceeds tolerance.",
+    "evidence": {
+      "sql_query": "SELECT   COALESCE(SUM(last_pmt_amt), 0) AS total_pmt,   COALESCE(SUM(last_pmt_prin_amt), 0) +   COALESCE(SUM(last_pmt_int_amt), 0) +   COALESCE(SUM(last_pmt_escrow_amt), 0) +   COALESCE(SUM(last_pmt_late_fee), 0) AS component_sum FROM audit.cad_actg_unit_bal_fact WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'M'",
+      "expected_value": "875000.00",
+      "actual_value": "873250.00",
+      "validation_message": "total_pmt=875000.00, components=873250.00"
+    },
+    "priority": "Critical",
+    "severity": "Critical",
+    "component": "ETL \u2014 Payment Aggregation",
+    "labels": [
+      "data-quality",
+      "financial-reconciliation",
+      "audit-layer",
+      "payment"
+    ],
+    "linked_user_story": "US-CAD-201: As a finance operations analyst, I need payment amounts in the audit fact table to be internally consistent (total = sum of components) so that financial reconciliation reports balance and audit findings are avoided."
+  },
+  {
+    "jira_project": "CAD",
+    "issue_type": "Bug",
+    "defect_id": "CAD-DEF-005",
+    "test_case_id": "TC-IG-002",
+    "reporter": "Validation Automation",
+    "created_date": "2026-05-12",
+    "environment": "Hive / Beeline JDBC \u2014 Synthetic Data Simulation",
+    "snapshot_date": "2024-01-31",
+    "summary": "[CAD] Orphan Source Records \u2014 2 MOEND contracts missing from cad_id staging",
+    "description": "2 records in default.td_contracts (MOEND snapshot, data_src_ind = 'M') have no matching record in work_schema.cad_id when joined on ln_acct_nbr + as_of_dt + data_src_ind. These contracts were loaded into the source layer but were not propagated to the staging layer.\n\nThis is an integration failure \u2014 the source-to-staging ETL step dropped 2 records. These contracts will be missing from ALL downstream tables (cad_cb/cad_nccb, audit dimensions and facts), causing incomplete portfolio reporting.\n\nNote: The DAILY snapshot (data_src_ind = 'D') has no orphan records; this issue is specific to the MOEND processing path.",
+    "steps_to_reproduce": "1. Load synthetic data for as_of_dt = '2024-01-31'\n2. Execute the ETL pipeline for both DAILY and MOEND snapshots\n3. Run validation query:\n   SELECT COUNT(*) FROM default.td_contracts tc\n   LEFT JOIN work_schema.cad_id ci\n     ON tc.ln_acct_nbr = ci.ln_acct_nbr\n     AND tc.as_of_dt = ci.as_of_dt\n     AND tc.data_src_ind = ci.data_src_ind\n   WHERE tc.as_of_dt = '2024-01-31'\n     AND tc.data_src_ind = 'M'\n     AND ci.ln_acct_nbr IS NULL\n4. Observe: query returns 2 (expected: 0)",
+    "expected_result": "0 orphan records \u2014 every source contract should have a corresponding cad_id record.",
+    "actual_result": "2 MOEND source records have no matching cad_id entry. These contracts are missing from all downstream tables.",
+    "evidence": {
+      "sql_query": "SELECT COUNT(*) AS cnt FROM default.td_contracts tc LEFT JOIN work_schema.cad_id ci   ON tc.ln_acct_nbr = ci.ln_acct_nbr   AND tc.as_of_dt = ci.as_of_dt   AND tc.data_src_ind = ci.data_src_ind WHERE tc.as_of_dt = '2024-01-31'   AND tc.data_src_ind = 'M'   AND ci.ln_acct_nbr IS NULL",
+      "expected_value": "0",
+      "actual_value": "2",
+      "validation_message": "2 source records missing from cad_id"
+    },
+    "priority": "Critical",
+    "severity": "Critical",
+    "component": "ETL \u2014 Source to Staging Pipeline",
+    "labels": [
+      "data-quality",
+      "data-completeness",
+      "integration",
+      "moend"
+    ],
+    "linked_user_story": "US-CAD-301: As a data engineer, I need 100% of source contracts to be staged into cad_id for both DAILY and MOEND snapshots, so that no contracts are lost during the source-to-staging transformation and downstream reporting is complete."
+  },
+  {
+    "jira_project": "CAD",
+    "issue_type": "Bug",
+    "defect_id": "CAD-DEF-006",
+    "test_case_id": "TC-IG-005b",
+    "reporter": "Validation Automation",
+    "created_date": "2026-05-12",
+    "environment": "Hive / Beeline JDBC \u2014 Synthetic Data Simulation",
+    "snapshot_date": "2024-01-31",
+    "summary": "[CAD] Duplicate Record in cad_cb \u2014 1 DAILY contract appears twice on same natural key",
+    "description": "1 duplicate record group was found in work_schema.cad_cb for the DAILY snapshot (data_src_ind = 'D'). The same contract (ln_acct_nbr + data_src_ind) appears more than once within the same as_of_dt partition.\n\nThis duplicate will cause:\n  - Double-counting in SUM(ln_curr_bal) and other balance aggregations\n  - Inflated portfolio metrics and incorrect exposure calculations\n  - JOIN fan-out when linking to audit fact tables\n\nThe ETL staging INSERT may be missing a DISTINCT clause or deduplication logic on the natural key (ln_acct_nbr + data_src_ind + as_of_dt).",
+    "steps_to_reproduce": "1. Load synthetic data for as_of_dt = '2024-01-31'\n2. Execute the ETL pipeline to populate work_schema.cad_cb\n3. Run validation query:\n   SELECT COUNT(*) FROM (\n     SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt\n     FROM work_schema.cad_cb\n     WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'\n     GROUP BY ln_acct_nbr, data_src_ind\n     HAVING COUNT(*) > 1\n   ) dups\n4. Observe: query returns 1 (expected: 0)",
+    "expected_result": "0 duplicate record groups \u2014 each ln_acct_nbr + data_src_ind combination should appear exactly once per partition.",
+    "actual_result": "1 duplicate group found in cad_cb for DAILY snapshot.",
+    "evidence": {
+      "sql_query": "SELECT COUNT(*) AS dup_count FROM (  SELECT ln_acct_nbr, data_src_ind, COUNT(*) AS cnt   FROM work_schema.cad_cb   WHERE as_of_dt = '2024-01-31' AND data_src_ind = 'D'   GROUP BY ln_acct_nbr, data_src_ind   HAVING COUNT(*) > 1) dups",
+      "expected_value": "0",
+      "actual_value": "1",
+      "validation_message": "1 duplicate key groups in work_schema.cad_cb"
+    },
+    "priority": "High",
+    "severity": "Major",
+    "component": "ETL \u2014 Deduplication",
+    "labels": [
+      "data-quality",
+      "duplicates",
+      "staging-layer",
+      "daily"
+    ],
+    "linked_user_story": "US-CAD-302: As a data steward, I need staging tables to enforce uniqueness on natural keys (ln_acct_nbr + data_src_ind per as_of_dt partition) so that downstream aggregations are not inflated by duplicate records."
+  }
+]
