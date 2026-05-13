@@ -69,7 +69,16 @@ public class AmountValidator {
         }
 
         // Check precision/scale limits for DECIMAL(precision, scale)
-        BigDecimal scaled = value.setScale(scale, RoundingMode.UNNECESSARY);
+        BigDecimal scaled;
+        try {
+            scaled = value.setScale(scale, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException e) {
+            // Value has more decimal places than the target scale allows
+            return ValidationResult.error(columnName, raw,
+                    "Value " + value + " has more than " + scale
+                            + " decimal places — cannot fit DECIMAL(" + precision + "," + scale
+                            + ") without rounding");
+        }
         BigDecimal maxValue = BigDecimal.TEN.pow(precision - scale).subtract(BigDecimal.ONE.scaleByPowerOfTen(-scale));
         if (scaled.compareTo(maxValue) > 0) {
             return ValidationResult.error(columnName, raw,

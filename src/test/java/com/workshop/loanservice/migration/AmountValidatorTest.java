@@ -84,6 +84,17 @@ class AmountValidatorTest {
         assertEquals(0, new BigDecimal("4.750").compareTo(result.getValue()));
     }
 
+    @Test
+    void parseAmount_excessDecimalPlaces_returnsError() {
+        // "4.7501" has 4 decimal places but DECIMAL(5,3) only allows 3
+        // Previously this threw ArithmeticException from setScale(UNNECESSARY)
+        ValidationResult<BigDecimal> result = validator.parseAmount(
+                "4.7501", "interest_rate", true, 5, 3);
+        assertFalse(result.isValid());
+        assertEquals(ValidationResult.Severity.ERROR, result.getSeverity());
+        assertTrue(result.getErrorMessage().contains("decimal places"));
+    }
+
     // =========================================================================
     // parseAmount — null/blank handling
     // =========================================================================

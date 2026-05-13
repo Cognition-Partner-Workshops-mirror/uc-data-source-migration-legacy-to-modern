@@ -86,10 +86,17 @@ public class DateValidator {
                                                           boolean required) {
         ValidationResult<LocalDate> dateResult = parseDate(raw, columnName, required);
 
-        // Propagate errors/warnings from date parsing
+        // Propagate errors from date parsing
         if (dateResult.getSeverity() != null
                 && dateResult.getSeverity() == ValidationResult.Severity.ERROR) {
             return ValidationResult.error(columnName, raw, dateResult.getErrorMessage());
+        }
+
+        // Propagate warnings from date parsing (e.g. unparseable optional value)
+        if (dateResult.getSeverity() != null
+                && dateResult.getSeverity() == ValidationResult.Severity.WARNING
+                && dateResult.getValue() == null) {
+            return ValidationResult.warning(columnName, raw, dateResult.getErrorMessage());
         }
 
         if (dateResult.getValue() == null && !required) {
@@ -101,8 +108,17 @@ public class DateValidator {
                     "Required timestamp field could not be parsed");
         }
 
-        // Promote LocalDate to LocalDateTime at midnight; add INFO about time loss
+        // Promote LocalDate to LocalDateTime at midnight
         LocalDateTime ts = dateResult.getValue().atStartOfDay();
+
+        // If the underlying date had an ambiguity warning, preserve it on the timestamp result
+        if (dateResult.getSeverity() == ValidationResult.Severity.WARNING) {
+            return ValidationResult.warningWithValue(ts, columnName, raw,
+                    dateResult.getErrorMessage()
+                            + "; time component set to 00:00:00");
+        }
+
+        // Normal case: add INFO about time component loss
         return ValidationResult.info(ts, columnName, raw,
                 "Time component set to 00:00:00 — legacy source stores date only");
     }

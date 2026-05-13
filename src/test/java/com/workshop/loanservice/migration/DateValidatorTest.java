@@ -156,6 +156,26 @@ class DateValidatorTest {
     }
 
     @Test
+    void parseTimestamp_ambiguousDate_preservesWarning() {
+        // 03/04/2020 is ambiguous (day <= 12) — parseTimestamp should preserve the warning
+        // instead of silently replacing it with an INFO about time component loss
+        ValidationResult<LocalDateTime> result = validator.parseTimestamp(
+                "03/04/2020", "created_at", false);
+        assertTrue(result.isValid());
+        assertNotNull(result.getValue());
+        assertEquals(ValidationResult.Severity.WARNING, result.getSeverity());
+        assertTrue(result.getErrorMessage().contains("Ambiguous"));
+    }
+
+    @Test
+    void parseTimestamp_unparseableOptional_propagatesWarning() {
+        // Unparseable optional value should produce WARNING, not silently return ok(null)
+        ValidationResult<LocalDateTime> result = validator.parseTimestamp(
+                "NOT-A-DATE", "updated_at", false);
+        assertEquals(ValidationResult.Severity.WARNING, result.getSeverity());
+    }
+
+    @Test
     void parseTimestamp_nullRequired_returnsError() {
         ValidationResult<LocalDateTime> result = validator.parseTimestamp(null, "created_at", true);
         assertFalse(result.isValid());
