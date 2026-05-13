@@ -47,12 +47,14 @@ CREATE TABLE IF NOT EXISTS loan_warehouse.loan_accounts (
     updated_at          TIMESTAMP            COMMENT 'Parsed from LN_UPDT_DT (MM/DD/YYYY -> TIMESTAMP)',
     -- Ingestion metadata
     _ingestion_ts       TIMESTAMP            COMMENT 'Timestamp when record was ingested into Delta Lake',
-    _source_system      STRING               COMMENT 'Source system identifier (CDW_LN_ACCT)'
+    _source_system      STRING               COMMENT 'Source system identifier (CDW_LN_ACCT)',
+    -- Partition column derived from origination_date during ingestion
+    origination_year    INT                  COMMENT 'Derived year from origination_date for partitioning'
 )
 USING DELTA
 -- Partitioned by status for efficient filtering of active vs closed loans
 -- Also partitioned by origination year for time-based queries and data lifecycle management
-PARTITIONED BY (status, origination_year INT)
+PARTITIONED BY (status, origination_year)
 COMMENT 'Loan accounts fact table migrated from legacy CDW_LN_ACCT. Normalized: borrower fields removed, FK references used instead.'
 TBLPROPERTIES (
     'delta.autoOptimize.optimizeWrite' = 'true',

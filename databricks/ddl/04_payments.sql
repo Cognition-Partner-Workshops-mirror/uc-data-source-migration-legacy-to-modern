@@ -34,12 +34,15 @@ CREATE TABLE IF NOT EXISTS loan_warehouse.payments (
     updated_at              TIMESTAMP            COMMENT 'Parsed from PMT_UPDT_DT (MM/DD/YYYY -> TIMESTAMP)',
     -- Ingestion metadata
     _ingestion_ts           TIMESTAMP            COMMENT 'Timestamp when record was ingested into Delta Lake',
-    _source_system          STRING               COMMENT 'Source system identifier (CDW_PMT_HIST)'
+    _source_system          STRING               COMMENT 'Source system identifier (CDW_PMT_HIST)',
+    -- Partition columns derived from payment_date during ingestion
+    payment_year            INT                  COMMENT 'Derived year from payment_date for partitioning',
+    payment_month           INT                  COMMENT 'Derived month from payment_date for partitioning'
 )
 USING DELTA
 -- Partitioned by payment year and month for efficient time-range queries
 -- and data lifecycle management (e.g., archiving old payment records)
-PARTITIONED BY (payment_year INT, payment_month INT)
+PARTITIONED BY (payment_year, payment_month)
 COMMENT 'Payment history fact table migrated from legacy CDW_PMT_HIST. Contains all loan payment transactions with expanded type and status codes.'
 TBLPROPERTIES (
     'delta.autoOptimize.optimizeWrite' = 'true',

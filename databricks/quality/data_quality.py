@@ -497,7 +497,7 @@ def generate_report(all_results: list, output_path: str = None) -> str:
     failed = total - passed
     overall = "PASS" if failed == 0 else "FAIL"
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
     lines = [
         "# Data Quality Report",
