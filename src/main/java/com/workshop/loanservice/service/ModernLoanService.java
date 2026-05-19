@@ -12,6 +12,7 @@ import com.workshop.loanservice.repository.PaymentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -22,6 +23,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ModernLoanService {
+
+    // Match legacy MM/DD/YYYY date format for API backward compatibility
+    private static final DateTimeFormatter LEGACY_DATE_FORMAT = DateTimeFormatter.ofPattern("MM/dd/yyyy");
 
     private final BorrowerRepository borrowerRepo;
     private final LoanAccountRepository accountRepo;
@@ -99,7 +103,8 @@ public class ModernLoanService {
         dto.setMonthlyPayment(acct.getMonthlyPayment());
         // Status is already expanded (ACTIVE, not ACT)
         dto.setStatus(expandModernStatus(acct.getStatus()));
-        dto.setOriginationDate(acct.getOriginationDate().toString());
+        // Format as MM/DD/YYYY to match legacy API output format
+        dto.setOriginationDate(acct.getOriginationDate().format(LEGACY_DATE_FORMAT));
         dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
                 + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
         dto.setPropertyType(expandModernPropertyType(acct.getPropertyType()));
@@ -125,7 +130,8 @@ public class ModernLoanService {
         PaymentDto dto = new PaymentDto();
         dto.setPaymentId(String.valueOf(pmt.getId()));
         dto.setLoanAccountNumber(pmt.getLoanAccount().getAccountNumber());
-        dto.setPaymentDate(pmt.getPaymentDate().toString());
+        // Format as MM/DD/YYYY to match legacy API output format
+        dto.setPaymentDate(pmt.getPaymentDate().format(LEGACY_DATE_FORMAT));
         // Amounts are already BigDecimal — no parsing
         dto.setTotalAmount(pmt.getTotalAmount());
         dto.setPrincipalAmount(pmt.getPrincipalAmount());

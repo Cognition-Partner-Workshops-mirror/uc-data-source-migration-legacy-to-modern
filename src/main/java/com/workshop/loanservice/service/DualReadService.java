@@ -105,7 +105,8 @@ public class DualReadService {
         this.mode = mode;
     }
 
-    public List<ComparisonResult> getRecentComparisons() {
+    // Synchronized to avoid ConcurrentModificationException with addComparison()
+    public synchronized List<ComparisonResult> getRecentComparisons() {
         return new ArrayList<>(recentComparisons);
     }
 
@@ -166,6 +167,7 @@ public class DualReadService {
         compareField(prefix + "monthlyPayment", legacy.getMonthlyPayment(), modern.getMonthlyPayment(), result);
         compareField(prefix + "status", legacy.getStatus(), modern.getStatus(), result);
         compareField(prefix + "propertyType", legacy.getPropertyType(), modern.getPropertyType(), result);
+        compareField(prefix + "originationDate", legacy.getOriginationDate(), modern.getOriginationDate(), result);
     }
 
     private void compareBorrowers(List<BorrowerDto> legacyBorrowers) {
