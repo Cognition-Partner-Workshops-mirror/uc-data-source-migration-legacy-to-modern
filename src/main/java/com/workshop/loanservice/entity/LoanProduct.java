@@ -1,0 +1,71 @@
+package com.workshop.loanservice.entity;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+/**
+ * Modern loan product entity mapped to the normalized 'loan_products' table.
+ * Uses proper types: INTEGER for term_months, DECIMAL for amounts, BOOLEAN for is_active.
+ */
+@Entity
+@Table(name = "loan_products")
+public class LoanProduct {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "code", unique = true, nullable = false)
+    private String code;
+
+    @Column(name = "name", nullable = false)
+    private String name;
+
+    @Column(name = "type", nullable = false)
+    private String type;
+
+    @Column(name = "term_months", nullable = false)
+    private Integer termMonths;
+
+    @Column(name = "rate_type", nullable = false)
+    private String rateType;
+
+    @Column(name = "min_amount")
+    private BigDecimal minAmount;
+
+    @Column(name = "max_amount")
+    private BigDecimal maxAmount;
+
+    @Column(name = "is_active")
+    private Boolean isActive;
+
+    @Column(name = "effective_date")
+    private LocalDate effectiveDate;
+
+    @Column(name = "expiration_date")
+    private LocalDate expirationDate;
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getCode() { return code; }
+    public void setCode(String code) { this.code = code; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getType() { return type; }
+    public void setType(String type) { this.type = type; }
+    public Integer getTermMonths() { return termMonths; }
+    public void setTermMonths(Integer termMonths) { this.termMonths = termMonths; }
+    public String getRateType() { return rateType; }
+    public void setRateType(String rateType) { this.rateType = rateType; }
+    public BigDecimal getMinAmount() { return minAmount; }
+    public void setMinAmount(BigDecimal minAmount) { this.minAmount = minAmount; }
+    public BigDecimal getMaxAmount() { return maxAmount; }
+    public void setMaxAmount(BigDecimal maxAmount) { this.maxAmount = maxAmount; }
+    public Boolean getIsActive() { return isActive; }
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+    public LocalDate getEffectiveDate() { return effectiveDate; }
+    public void setEffectiveDate(LocalDate effectiveDate) { this.effectiveDate = effectiveDate; }
+    public LocalDate getExpirationDate() { return expirationDate; }
+    public void setExpirationDate(LocalDate expirationDate) { this.expirationDate = expirationDate; }
+}
