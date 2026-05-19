@@ -1,10 +1,12 @@
 package com.workshop.loanservice.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
  * Clean DTO for API responses.
  * The service layer translates legacy string fields into proper types.
+ * Annual income field added to surface data that was previously dropped (ANO-009).
  */
 public class BorrowerDto {
 
@@ -16,6 +18,8 @@ public class BorrowerDto {
     private String state;
     private Integer creditScore;
     private String employmentStatus;
+    // Added to surface annual income previously dropped in translation (ANO-009)
+    private BigDecimal annualIncome;
     private List<LoanSummaryDto> loans;
 
     public String getId() { return id; }
@@ -34,6 +38,8 @@ public class BorrowerDto {
     public void setCreditScore(Integer creditScore) { this.creditScore = creditScore; }
     public String getEmploymentStatus() { return employmentStatus; }
     public void setEmploymentStatus(String employmentStatus) { this.employmentStatus = employmentStatus; }
+    public BigDecimal getAnnualIncome() { return annualIncome; }
+    public void setAnnualIncome(BigDecimal annualIncome) { this.annualIncome = annualIncome; }
     public List<LoanSummaryDto> getLoans() { return loans; }
     public void setLoans(List<LoanSummaryDto> loans) { this.loans = loans; }
 }
