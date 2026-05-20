@@ -171,19 +171,24 @@ class DataQualityFramework:
                         description=f"No nulls in {short_name}.{col_name}"
                     )
 
-                    null_count = df.filter(F.col(col_name).isNull()).count()
+                    # Check for both SQL nulls and empty/whitespace-only strings,
+                    # which CSV reads can produce instead of proper nulls
+                    null_count = df.filter(
+                        F.col(col_name).isNull()
+                        | (F.trim(F.col(col_name).cast("string")) == "")
+                    ).count()
 
                     if null_count == 0:
                         check.set_result(
                             passed=True,
-                            details=f"No null values found in {col_name}",
+                            details=f"No null or empty values found in {col_name}",
                             actual=0,
                             expected=0
                         )
                     else:
                         check.set_result(
                             passed=False,
-                            details=f"{null_count} null values found in required column {col_name}",
+                            details=f"{null_count} null/empty values found in required column {col_name}",
                             actual=null_count,
                             expected=0
                         )
@@ -297,9 +302,10 @@ class DataQualityFramework:
         self._check_no_future_posted_payments()
         self._check_credit_score_range()
         self._check_interest_rate_range()
+        self._check_duplicate_primary_keys()
 
     def _check_active_loan_balance(self):
-        """Active loans must have a positive current balance."""
+        """Active loans must have a positive, non-null current balance."""
         check = DataQualityCheck(
             category="Business Rule",
             name="active_loan_positive_balance",
@@ -308,16 +314,21 @@ class DataQualityFramework:
 
         try:
             df = self.spark.table(LOAN_ACCOUNTS_TABLE)
-            violations = df.filter(
-                (F.col("status") == "ACTIVE") & (F.col("current_balance") <= 0)
+            active_loans = df.filter(F.col("status") == "ACTIVE")
+            active_count = active_loans.count()
+
+            # Check for null balance OR non-positive balance on active loans
+            violations = active_loans.filter(
+                F.col("current_balance").isNull()
+                | (F.col("current_balance") <= 0)
             ).count()
 
             check.set_result(
                 passed=(violations == 0),
                 details=(
-                    f"No violations found"
+                    f"All {active_count} active loan(s) have positive balance"
                     if violations == 0
-                    else f"{violations} active loan(s) with balance <= 0"
+                    else f"{violations} of {active_count} active loan(s) with null or non-positive balance"
                 ),
                 actual=violations,
                 expected=0
@@ -337,20 +348,33 @@ class DataQualityFramework:
 
         try:
             df = self.spark.table(LOAN_ACCOUNTS_TABLE)
-            violations = df.filter(
-                (F.col("status") == "CLOSED") & F.col("maturity_date").isNull()
-            ).count()
+            closed_loans = df.filter(F.col("status") == "CLOSED")
+            closed_count = closed_loans.count()
 
-            check.set_result(
-                passed=(violations == 0),
-                details=(
-                    f"No violations found"
-                    if violations == 0
-                    else f"{violations} closed loan(s) without maturity_date"
-                ),
-                actual=violations,
-                expected=0
-            )
+            # Report how many closed loans were actually tested to avoid
+            # vacuous-truth passes when no closed loans exist
+            if closed_count == 0:
+                check.set_result(
+                    passed=True,
+                    details="No CLOSED loans found in dataset — check is vacuously true (0 rows tested)",
+                    actual=0,
+                    expected=0
+                )
+            else:
+                violations = closed_loans.filter(
+                    F.col("maturity_date").isNull()
+                ).count()
+
+                check.set_result(
+                    passed=(violations == 0),
+                    details=(
+                        f"All {closed_count} closed loan(s) have a maturity_date"
+                        if violations == 0
+                        else f"{violations} of {closed_count} closed loan(s) without maturity_date"
+                    ),
+                    actual=violations,
+                    expected=0
+                )
         except Exception as e:
             check.set_result(passed=False, details=f"Error: {str(e)}")
 
@@ -360,6 +384,10 @@ class DataQualityFramework:
         """
         Payment component amounts (principal + interest + escrow) should
         approximately equal the total_amount (within rounding tolerance).
+
+        Note: late_fee is tracked separately and is NOT included in the
+        component sum, matching the seed data convention where total_amount
+        represents the P+I+E payment only.
         """
         check = DataQualityCheck(
             category="Business Rule",
@@ -369,25 +397,47 @@ class DataQualityFramework:
 
         try:
             df = self.spark.table(PAYMENTS_TABLE)
-            # Calculate the sum of components and compare to total
-            # Allow a $0.02 tolerance for floating-point rounding
-            violations = df.filter(
-                F.abs(
-                    F.coalesce(F.col("principal_amount"), F.lit(0))
-                    + F.coalesce(F.col("interest_amount"), F.lit(0))
-                    + F.coalesce(F.col("escrow_amount"), F.lit(0))
-                    - F.col("total_amount")
-                ) > 0.02
-            ).count()
-
             total_payments = df.count()
+
+            # Calculate component sum and difference from total_amount
+            df_with_diff = df.withColumn(
+                "_component_sum",
+                F.coalesce(F.col("principal_amount"), F.lit(0))
+                + F.coalesce(F.col("interest_amount"), F.lit(0))
+                + F.coalesce(F.col("escrow_amount"), F.lit(0))
+            ).withColumn(
+                "_amount_diff",
+                F.abs(F.col("_component_sum") - F.col("total_amount"))
+            )
+
+            violation_df = df_with_diff.filter(F.col("_amount_diff") > 0.02)
+            violations = violation_df.count()
+
+            # Include specific discrepancy details for investigation
+            detail_msg = ""
+            if violations > 0:
+                # Collect the IDs and amounts of violating payments for the report
+                samples = (
+                    violation_df
+                    .select("legacy_payment_id", "total_amount", "_component_sum", "_amount_diff")
+                    .limit(5)
+                    .collect()
+                )
+                sample_details = "; ".join(
+                    f"{r['legacy_payment_id']}: total={r['total_amount']}, "
+                    f"components={r['_component_sum']}, diff={r['_amount_diff']}"
+                    for r in samples
+                )
+                detail_msg = (
+                    f"{violations} of {total_payments} payments have inconsistent amounts. "
+                    f"Examples: {sample_details}"
+                )
+            else:
+                detail_msg = f"All {total_payments} payments have consistent component amounts"
+
             check.set_result(
                 passed=(violations == 0),
-                details=(
-                    f"All {total_payments} payments have consistent component amounts"
-                    if violations == 0
-                    else f"{violations} of {total_payments} payments have inconsistent amounts"
-                ),
+                details=detail_msg,
                 actual=violations,
                 expected=0
             )
@@ -487,6 +537,48 @@ class DataQualityFramework:
             check.set_result(passed=False, details=f"Error: {str(e)}")
 
         self.checks.append(check)
+
+    def _check_duplicate_primary_keys(self):
+        """
+        Verify no duplicate primary keys exist in any target table.
+        Duplicates can arise if the source data has repeats or if the
+        ingestion pipeline is run multiple times without truncation.
+        """
+        pk_checks = [
+            (BORROWERS_TABLE, "external_id"),
+            (LOAN_PRODUCTS_TABLE, "code"),
+            (LOAN_ACCOUNTS_TABLE, "account_number"),
+            (PAYMENTS_TABLE, "legacy_payment_id"),
+        ]
+
+        for table, pk_col in pk_checks:
+            short_name = table.split(".")[-1]
+            check = DataQualityCheck(
+                category="Business Rule",
+                name=f"no_duplicate_pk_{short_name}",
+                description=f"No duplicate {pk_col} values in {short_name}"
+            )
+
+            try:
+                df = self.spark.table(table)
+                total_rows = df.count()
+                distinct_keys = df.select(pk_col).distinct().count()
+                duplicates = total_rows - distinct_keys
+
+                check.set_result(
+                    passed=(duplicates == 0),
+                    details=(
+                        f"All {total_rows} rows have unique {pk_col}"
+                        if duplicates == 0
+                        else f"{duplicates} duplicate {pk_col} value(s) found ({total_rows} rows, {distinct_keys} distinct)"
+                    ),
+                    actual=duplicates,
+                    expected=0
+                )
+            except Exception as e:
+                check.set_result(passed=False, details=f"Error: {str(e)}")
+
+            self.checks.append(check)
 
     # =========================================================================
     # Report Generation

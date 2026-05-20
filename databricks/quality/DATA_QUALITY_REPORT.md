@@ -64,3 +64,19 @@
 | POSTED payments must not have a future payment_date | — | — |
 | Borrower credit scores must be between 300 and 850 | — | — |
 | Loan interest rates must be between 0% and 30% | — | — |
+| No duplicate external_id values in borrowers | — | — |
+| No duplicate code values in loan_products | — | — |
+| No duplicate account_number values in loan_accounts | — | — |
+| No duplicate legacy_payment_id values in payments | — | — |
+
+## Known Seed Data Anomalies
+
+The following anomalies exist in the seed data (`data-legacy.sql`) and will be
+correctly flagged by the quality checks:
+
+- **PMT-2025120001** and **PMT-2025110001** (both for loan LN-2019-00142):
+  `principal + interest + escrow = $1,887.02` but `total_amount = $1,487.02` —
+  off by exactly **$400.00**. The quality framework correctly flags these 2 of 10
+  payments as inconsistent.
+- **Closed loan check** passes vacuously — all 5 loans have status `ACT→ACTIVE`,
+  so 0 closed loans are tested. The check now reports this explicitly.

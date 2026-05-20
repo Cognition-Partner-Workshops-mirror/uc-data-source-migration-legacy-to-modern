@@ -103,11 +103,15 @@ def parse_timestamp_col(df, src_col, tgt_col):
 def parse_amount_col(df, src_col, tgt_col, precision=12, scale=2):
     """
     Parse a legacy comma-formatted amount string ("285,000" or "1,487.02")
-    into a Spark DecimalType column. Strips commas before casting.
+    into a Spark DecimalType column. Strips dollar signs, commas, and
+    leading/trailing whitespace before casting. Handles edge cases like
+    "$285,000", " 1,487.02 ", and bare "0".
     """
     return df.withColumn(
         tgt_col,
-        F.regexp_replace(F.col(src_col), ",", "").cast(DecimalType(precision, scale))
+        F.regexp_replace(
+            F.trim(F.col(src_col)), "[\\$,]", ""
+        ).cast(DecimalType(precision, scale))
     )
 
 
@@ -180,10 +184,13 @@ def add_parse_error_flags(df, date_cols=None, amount_cols=None):
             )
 
     if error_conditions:
-        # Collect all non-null error flags into an array
+        # Collect all non-null error flags into an array.
+        # Uses filter() instead of array_compact() for Spark 3.1+ compatibility
+        # (array_compact requires Spark 3.4+).
+        raw_array = F.array(*error_conditions)
         return df.withColumn(
             "_parse_errors",
-            F.array_compact(F.array(*error_conditions))
+            F.filter(raw_array, lambda x: x.isNotNull())
         )
     return df.withColumn("_parse_errors", F.array().cast("array<string>"))
 
