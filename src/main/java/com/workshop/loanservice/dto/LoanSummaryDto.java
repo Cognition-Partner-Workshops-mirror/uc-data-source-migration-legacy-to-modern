@@ -18,6 +18,8 @@ public class LoanSummaryDto {
     private String originationDate;
     private String propertyAddress;
     private String propertyType;
+    // Delinquency days exposed to give API consumers visibility into loan health (ANO-003 fix)
+    private Integer delinquencyDays;
 
     public String getLoanAccountNumber() { return loanAccountNumber; }
     public void setLoanAccountNumber(String loanAccountNumber) { this.loanAccountNumber = loanAccountNumber; }
@@ -41,4 +43,6 @@ public class LoanSummaryDto {
     public void setPropertyAddress(String propertyAddress) { this.propertyAddress = propertyAddress; }
     public String getPropertyType() { return propertyType; }
     public void setPropertyType(String propertyType) { this.propertyType = propertyType; }
+    public Integer getDelinquencyDays() { return delinquencyDays; }
+    public void setDelinquencyDays(Integer delinquencyDays) { this.delinquencyDays = delinquencyDays; }
 }
