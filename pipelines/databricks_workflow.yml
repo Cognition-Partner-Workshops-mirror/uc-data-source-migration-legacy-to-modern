@@ -1,0 +1,110 @@
+# Databricks Workflow definition for the Legacy CDW → Modern migration pipeline.
+# Deploy via Databricks CLI: databricks bundle deploy
+# Or import directly into Databricks Workflows UI.
+#
+# This workflow executes the full medallion pipeline (Bronze → Silver → Gold)
+# with task dependencies ensuring correct execution order.
+
+resources:
+  jobs:
+    legacy_to_modern_migration:
+      name: "Legacy CDW to Modern Data Platform Migration"
+      description: |
+        Full migration pipeline: ingests legacy CDW tables (CDW_BORR_MSTR,
+        CDW_LN_PROD, CDW_LN_ACCT, CDW_PMT_HIST) through Bronze/Silver/Gold
+        medallion layers, producing normalized modern tables with proper
+        typing, validation, and FK resolution.
+
+      # Schedule: run daily at 2 AM UTC (adjust for your timezone)
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: "UTC"
+
+      # Cluster configuration
+      job_clusters:
+        - job_cluster_key: "migration_cluster"
+          new_cluster:
+            spark_version: "14.3.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 2
+            spark_conf:
+              spark.sql.shuffle.partitions: "8"
+            spark_env_vars:
+              PYSPARK_PYTHON: "/databricks/python3/bin/python3"
+
+      # Pipeline tasks with dependencies
+      tasks:
+        # Bronze: Raw ingestion
+        - task_key: "bronze_ingestion"
+          description: "Ingest raw legacy CDW tables into bronze Delta tables"
+          job_cluster_key: "migration_cluster"
+          notebook_task:
+            notebook_path: "pipelines/notebooks/01_bronze_ingestion"
+            source: "GIT"
+          timeout_seconds: 3600
+
+        # Silver: Borrower transformation
+        - task_key: "silver_borrowers"
+          description: "Transform CDW_BORR_MSTR → silver.borrowers"
+          depends_on:
+            - task_key: "bronze_ingestion"
+          job_cluster_key: "migration_cluster"
+          notebook_task:
+            notebook_path: "pipelines/notebooks/02_silver_borrowers"
+            source: "GIT"
+          timeout_seconds: 1800
+
+        # Silver: Loan products transformation
+        - task_key: "silver_loan_products"
+          description: "Transform CDW_LN_PROD → silver.loan_products"
+          depends_on:
+            - task_key: "bronze_ingestion"
+          job_cluster_key: "migration_cluster"
+          notebook_task:
+            notebook_path: "pipelines/notebooks/03_silver_loan_products"
+            source: "GIT"
+          timeout_seconds: 1800
+
+        # Silver: Loan accounts transformation (depends on borrowers + products for ref checks)
+        - task_key: "silver_loan_accounts"
+          description: "Transform CDW_LN_ACCT → silver.loan_accounts"
+          depends_on:
+            - task_key: "bronze_ingestion"
+          job_cluster_key: "migration_cluster"
+          notebook_task:
+            notebook_path: "pipelines/notebooks/04_silver_loan_accounts"
+            source: "GIT"
+          timeout_seconds: 1800
+
+        # Silver: Payment history transformation
+        - task_key: "silver_payments"
+          description: "Transform CDW_PMT_HIST → silver.payments"
+          depends_on:
+            - task_key: "bronze_ingestion"
+          job_cluster_key: "migration_cluster"
+          notebook_task:
+            notebook_path: "pipelines/notebooks/05_silver_payments"
+            source: "GIT"
+          timeout_seconds: 1800
+
+        # Gold: Final normalized tables with FK resolution
+        - task_key: "gold_final_tables"
+          description: "Resolve FKs and produce final gold layer tables"
+          depends_on:
+            - task_key: "silver_borrowers"
+            - task_key: "silver_loan_products"
+            - task_key: "silver_loan_accounts"
+            - task_key: "silver_payments"
+          job_cluster_key: "migration_cluster"
+          notebook_task:
+            notebook_path: "pipelines/notebooks/06_gold_final_tables"
+            source: "GIT"
+          timeout_seconds: 3600
+
+      # Email notifications on failure
+      email_notifications:
+        on_failure:
+          - "data-engineering@example.com"
+
+      # Retry policy
+      max_concurrent_runs: 1
