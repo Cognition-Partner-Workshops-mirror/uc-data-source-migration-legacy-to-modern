@@ -59,7 +59,7 @@
 | `LN_MAT_DT` | VARCHAR(10) | `maturity_date` | DATE | Parse MM/DD/YYYY → DATE |
 | `LN_1ST_PMT_DT` | VARCHAR(10) | `first_payment_date` | DATE | Parse MM/DD/YYYY → DATE |
 | `LN_NXT_PMT_DT` | VARCHAR(10) | `next_payment_date` | DATE | Parse MM/DD/YYYY → DATE |
-| `LN_STAT_CD` | VARCHAR(5) | `status` | VARCHAR(15) | Expand: ACT→ACTIVE, CLO→CLOSED, DFT→DEFAULT, FRB→FORBEARANCE |
+| `LN_STAT_CD` | VARCHAR(5) | `status` | VARCHAR(15) | Expand: ACT→ACTIVE, CLO→CLOSED, DFT→DEFAULT, FRB→FORBEARANCE, DLQ→DELINQUENT |
 | `LN_DLQ_DAYS` | VARCHAR(5) | `delinquency_days` | INTEGER | Parse string → integer |
 | `LN_ESCROW_BAL` | VARCHAR(15) | `escrow_balance` | DECIMAL(10,2) | Remove commas, parse → decimal |
 | `LN_LTV_PCT` | VARCHAR(8) | `ltv_percent` | DECIMAL(5,2) | Parse string → decimal |

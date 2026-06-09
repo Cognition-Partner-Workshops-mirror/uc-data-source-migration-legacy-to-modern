@@ -279,11 +279,13 @@ public class LoanService {
 
     private String expandStatusCode(String code) {
         if (code == null) return "Unknown";
+        // DLQ added to align with VALID_LOAN_STATUSES in LegacyDataValidator (ANO-003)
         return switch (code) {
             case "ACT" -> "Active";
             case "CLO" -> "Closed";
             case "DFT" -> "Default";
             case "FRB" -> "Forbearance";
+            case "DLQ" -> "Delinquent";
             default -> code;
         };
     }
