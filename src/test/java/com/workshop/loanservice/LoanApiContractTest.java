@@ -125,6 +125,7 @@ class LoanApiContractTest {
         mockMvc.perform(get("/api/loans/LN-2019-00142/payments"))
                 .andExpect(status().isOk())
                 // Payments ordered by date DESC — most recent first
+                .andExpect(jsonPath("$[0].paymentId", is("PMT-2025120001")))
                 .andExpect(jsonPath("$[0].paymentDate", is("12/15/2025")))
                 .andExpect(jsonPath("$[0].totalAmount", is(1487.02)))
                 .andExpect(jsonPath("$[0].principalAmount", is(456.78)))

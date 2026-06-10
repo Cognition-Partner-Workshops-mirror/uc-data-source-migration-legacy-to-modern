@@ -10,6 +10,7 @@ import com.workshop.loanservice.repository.BorrowerRepository;
 import com.workshop.loanservice.repository.LoanAccountRepository;
 import com.workshop.loanservice.repository.PaymentRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
  * already expanded in the modern schema.
  */
 @Service
+@Transactional(readOnly = true)
 public class LoanService {
 
     // Date format used in API responses to maintain backward compatibility
@@ -149,7 +151,8 @@ public class LoanService {
 
     private PaymentDto toPaymentDto(Payment pmt) {
         PaymentDto dto = new PaymentDto();
-        dto.setPaymentId(String.valueOf(pmt.getId()));
+        // Use sequence_number to preserve legacy PMT_SEQ_NBR format in API responses
+        dto.setPaymentId(pmt.getSequenceNumber());
         dto.setLoanAccountNumber(pmt.getLoanAccount().getAccountNumber());
 
         // Format date for API response (preserves existing contract)

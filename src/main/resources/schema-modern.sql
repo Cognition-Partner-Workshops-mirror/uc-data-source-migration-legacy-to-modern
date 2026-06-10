@@ -81,6 +81,7 @@ CREATE TABLE loan_accounts (
 
 CREATE TABLE payments (
     id                  BIGINT PRIMARY KEY AUTO_INCREMENT,
+    sequence_number     VARCHAR(20) UNIQUE NOT NULL,
     loan_account_id     BIGINT NOT NULL,
     payment_date        DATE NOT NULL,
     total_amount        DECIMAL(10, 2) NOT NULL,

@@ -42,23 +42,24 @@ INSERT INTO loan_accounts (id, account_number, borrower_id, product_id, original
 (5, 'LN-2017-00034', 5, 4, 165000.00, 142567.90, 4.250, 360, 811.61, DATE '2017-03-01', DATE '2047-03-01', DATE '2017-04-01', DATE '2026-01-01', 'Active', 0, 1890.45, 80.00, '2200 Cedar Lane', 'Phoenix', 'AZ', '85001', 'Single Family Residence', 206000.00, TIMESTAMP '2017-02-20 00:00:00', TIMESTAMP '2025-12-01 00:00:00');
 
 -- Payments (FK to loan_accounts.id, proper dates, amounts as DECIMAL, expanded types/statuses)
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(1, 1, DATE '2025-12-15', 1487.02, 456.78, 1074.69, 355.55, 0.00, 'Regular', 'Posted', DATE '2025-12-14', DATE '2025-12-15', TIMESTAMP '2025-12-15 00:00:00', TIMESTAMP '2025-12-15 00:00:00');
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(2, 1, DATE '2025-11-15', 1487.02, 454.97, 1076.50, 355.55, 0.00, 'Regular', 'Posted', DATE '2025-11-14', DATE '2025-11-15', TIMESTAMP '2025-11-15 00:00:00', TIMESTAMP '2025-11-15 00:00:00');
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(3, 2, DATE '2025-12-01', 2924.18, 1842.56, 815.50, 266.12, 0.00, 'Regular', 'Posted', DATE '2025-11-30', DATE '2025-12-01', TIMESTAMP '2025-12-01 00:00:00', TIMESTAMP '2025-12-01 00:00:00');
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(4, 2, DATE '2025-11-01', 2924.18, 1837.76, 820.30, 266.12, 0.00, 'Regular', 'Posted', DATE '2025-10-31', DATE '2025-11-01', TIMESTAMP '2025-11-01 00:00:00', TIMESTAMP '2025-11-01 00:00:00');
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(5, 3, DATE '2025-12-01', 1077.05, 297.12, 779.93, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-12-05', DATE '2025-12-06', TIMESTAMP '2025-12-06 00:00:00', TIMESTAMP '2025-12-06 00:00:00');
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(6, 3, DATE '2025-11-01', 1077.05, 295.82, 781.23, 0.00, 47.50, 'Regular', 'Posted', DATE '2025-11-18', DATE '2025-11-19', TIMESTAMP '2025-11-19 00:00:00', TIMESTAMP '2025-11-19 00:00:00');
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(7, 4, DATE '2025-12-01', 2468.35, 857.23, 1611.12, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-11-29', DATE '2025-12-01', TIMESTAMP '2025-12-01 00:00:00', TIMESTAMP '2025-12-01 00:00:00');
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(8, 4, DATE '2025-11-01', 2468.35, 854.46, 1613.89, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-10-31', DATE '2025-11-01', TIMESTAMP '2025-11-01 00:00:00', TIMESTAMP '2025-11-01 00:00:00');
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(9, 5, DATE '2025-12-01', 811.61, 306.45, 505.16, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-11-30', DATE '2025-12-01', TIMESTAMP '2025-12-01 00:00:00', TIMESTAMP '2025-12-01 00:00:00');
-INSERT INTO payments (id, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
-(10, 5, DATE '2025-11-01', 811.61, 305.37, 506.24, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-10-30', DATE '2025-11-01', TIMESTAMP '2025-11-01 00:00:00', TIMESTAMP '2025-11-01 00:00:00');
+-- sequence_number preserves the legacy PMT_SEQ_NBR for API backward compatibility
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(1, 'PMT-2025120001', 1, DATE '2025-12-15', 1487.02, 456.78, 1074.69, 355.55, 0.00, 'Regular', 'Posted', DATE '2025-12-14', DATE '2025-12-15', TIMESTAMP '2025-12-15 00:00:00', TIMESTAMP '2025-12-15 00:00:00');
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(2, 'PMT-2025110001', 1, DATE '2025-11-15', 1487.02, 454.97, 1076.50, 355.55, 0.00, 'Regular', 'Posted', DATE '2025-11-14', DATE '2025-11-15', TIMESTAMP '2025-11-15 00:00:00', TIMESTAMP '2025-11-15 00:00:00');
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(3, 'PMT-2025120002', 2, DATE '2025-12-01', 2924.18, 1842.56, 815.50, 266.12, 0.00, 'Regular', 'Posted', DATE '2025-11-30', DATE '2025-12-01', TIMESTAMP '2025-12-01 00:00:00', TIMESTAMP '2025-12-01 00:00:00');
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(4, 'PMT-2025110002', 2, DATE '2025-11-01', 2924.18, 1837.76, 820.30, 266.12, 0.00, 'Regular', 'Posted', DATE '2025-10-31', DATE '2025-11-01', TIMESTAMP '2025-11-01 00:00:00', TIMESTAMP '2025-11-01 00:00:00');
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(5, 'PMT-2025120003', 3, DATE '2025-12-01', 1077.05, 297.12, 779.93, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-12-05', DATE '2025-12-06', TIMESTAMP '2025-12-06 00:00:00', TIMESTAMP '2025-12-06 00:00:00');
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(6, 'PMT-2025110003', 3, DATE '2025-11-01', 1077.05, 295.82, 781.23, 0.00, 47.50, 'Regular', 'Posted', DATE '2025-11-18', DATE '2025-11-19', TIMESTAMP '2025-11-19 00:00:00', TIMESTAMP '2025-11-19 00:00:00');
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(7, 'PMT-2025120004', 4, DATE '2025-12-01', 2468.35, 857.23, 1611.12, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-11-29', DATE '2025-12-01', TIMESTAMP '2025-12-01 00:00:00', TIMESTAMP '2025-12-01 00:00:00');
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(8, 'PMT-2025110004', 4, DATE '2025-11-01', 2468.35, 854.46, 1613.89, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-10-31', DATE '2025-11-01', TIMESTAMP '2025-11-01 00:00:00', TIMESTAMP '2025-11-01 00:00:00');
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(9, 'PMT-2025120005', 5, DATE '2025-12-01', 811.61, 306.45, 505.16, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-11-30', DATE '2025-12-01', TIMESTAMP '2025-12-01 00:00:00', TIMESTAMP '2025-12-01 00:00:00');
+INSERT INTO payments (id, sequence_number, loan_account_id, payment_date, total_amount, principal_amount, interest_amount, escrow_amount, late_fee, type, status, received_date, processed_date, created_at, updated_at) VALUES
+(10, 'PMT-2025110005', 5, DATE '2025-11-01', 811.61, 305.37, 506.24, 0.00, 0.00, 'Regular', 'Posted', DATE '2025-10-30', DATE '2025-11-01', TIMESTAMP '2025-11-01 00:00:00', TIMESTAMP '2025-11-01 00:00:00');

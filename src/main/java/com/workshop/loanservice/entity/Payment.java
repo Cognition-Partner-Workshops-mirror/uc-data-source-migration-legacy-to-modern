@@ -27,6 +27,10 @@ public class Payment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Preserves the legacy PMT_SEQ_NBR (e.g. "PMT-2025120001") for API compatibility
+    @Column(name = "sequence_number", unique = true, nullable = false)
+    private String sequenceNumber;
+
     // FK relationship to loan_accounts table
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "loan_account_id", nullable = false)
@@ -70,6 +74,8 @@ public class Payment {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public String getSequenceNumber() { return sequenceNumber; }
+    public void setSequenceNumber(String sequenceNumber) { this.sequenceNumber = sequenceNumber; }
     public LoanAccount getLoanAccount() { return loanAccount; }
     public void setLoanAccount(LoanAccount loanAccount) { this.loanAccount = loanAccount; }
     public LocalDate getPaymentDate() { return paymentDate; }
