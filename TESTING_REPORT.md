@@ -52,7 +52,31 @@ produce the same JSON output as the legacy service. Golden files represent the
 
 **Golden files location:** `src/test/resources/golden/`
 
-### 3. Context Loading Test (`LoanServiceApplicationTests.java`)
+### 3. Dual-Read Feature Flag Tests (`DualReadFeatureFlagTest.java`)
+
+**Location:** `src/test/java/com/workshop/loanservice/dualread/DualReadFeatureFlagTest.java`
+
+**Purpose:** Validates the dual-read feature flag implementation that allows safe
+rollout between legacy and modern data sources. Tests mode routing, shadow
+comparison, and runtime switching.
+
+| Test | What It Validates |
+|------|-------------------|
+| `legacyModeReturnsDataFromLegacySource` | Legacy mode correctly routes to CDW tables |
+| `modernModeReturnsDataFromModernSource` | Modern mode correctly routes to normalized schema |
+| `dualModeReturnsLegacyResponseWhileComparingModern` | Dual mode serves legacy response while performing background comparison |
+| `dualModePerformsShadowComparisonForAllEndpoints` | All 5 API operations trigger shadow comparison in dual mode |
+| `legacyModeApiEndpointsReturnOk` | HTTP 200 for all endpoints in legacy mode |
+| `dualModeApiEndpointsReturnOk` | HTTP 200 for all endpoints in dual mode |
+| `modernModeApiEndpointsReturnOk` | HTTP 200 for all endpoints in modern mode |
+| `comparatorDetectsIdenticalResults` | Matching DTOs correctly detected as equal |
+| `comparatorDetectsMismatchedResults` | Differing DTOs detected with field-level diagnostics |
+| `comparatorHandlesNullsGracefully` | Null values don't crash the comparator |
+| `dualModeDoesNotFailOnModernSourceError` | Dual mode always returns a response even during comparison |
+| `modeDefaultsToModern` | Default configuration is "modern" |
+| `runtimeModeSwitchingWorksWithoutRestart` | Mode can be changed at runtime without restarting the app |
+
+### 4. Context Loading Test (`LoanServiceApplicationTests.java`)
 
 **Location:** `src/test/java/com/workshop/loanservice/LoanServiceApplicationTests.java`
 
@@ -65,7 +89,7 @@ both legacy and modern schemas initialized and migration executed.
 mvn test
 ```
 
-**Result:** 22 tests, 0 failures, 0 errors
+**Result:** 35 tests, 0 failures, 0 errors
 
 ## What the Tests Cover
 
@@ -76,3 +100,6 @@ mvn test
 5. **FK resolution** — Legacy string IDs resolved to modern BIGINT auto-increment FKs
 6. **API parity** — JSON responses match before/after migration (golden-file comparison)
 7. **Edge cases** — NULL handling, zero values, non-zero late fees, delinquency days
+8. **Dual-read routing** — Feature flag correctly routes between legacy, modern, and shadow-compare modes
+9. **Shadow comparison** — DualReadComparator detects mismatches and records diagnostics
+10. **Runtime switching** — Mode can be changed without restart for zero-downtime rollout

@@ -3,188 +3,133 @@ package com.workshop.loanservice.service;
 import com.workshop.loanservice.dto.BorrowerDto;
 import com.workshop.loanservice.dto.LoanSummaryDto;
 import com.workshop.loanservice.dto.PaymentDto;
-import com.workshop.loanservice.entity.modern.Borrower;
-import com.workshop.loanservice.entity.modern.LoanAccount;
-import com.workshop.loanservice.entity.modern.Payment;
-import com.workshop.loanservice.repository.modern.BorrowerRepository;
-import com.workshop.loanservice.repository.modern.LoanAccountRepository;
-import com.workshop.loanservice.repository.modern.PaymentRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
- * Service layer that reads from the modern normalized schema.
- * Replaces the legacy implementation that performed string-to-type
- * conversions at read time. Now entities already have proper types
- * (LocalDate, BigDecimal, Integer, enums) so no translation is needed.
+ * Loan service router that delegates to the appropriate data source based on
+ * the datasource.mode feature flag. Supports three modes for safe rollout:
+ *
+ * - "legacy"  : reads from CDW tables only (original behavior, zero risk)
+ * - "modern"  : reads from normalized schema only (full cutover)
+ * - "dual"    : reads from BOTH sources, serves legacy response, and shadow-compares
+ *               modern response for reconciliation logging (safe rollout mode)
+ *
+ * The dual-read mode allows detecting transformation mismatches before cutover
+ * without impacting production responses. Set datasource.mode via application
+ * properties or environment variable for zero-downtime switching.
  */
 @Service
 public class LoanService {
 
-    private final BorrowerRepository borrowerRepository;
-    private final LoanAccountRepository loanAccountRepository;
-    private final PaymentRepository paymentRepository;
+    private static final Logger log = LoggerFactory.getLogger(LoanService.class);
 
-    public LoanService(BorrowerRepository borrowerRepository,
-                       LoanAccountRepository loanAccountRepository,
-                       PaymentRepository paymentRepository) {
-        this.borrowerRepository = borrowerRepository;
-        this.loanAccountRepository = loanAccountRepository;
-        this.paymentRepository = paymentRepository;
+    private final LegacyLoanDataSource legacyDataSource;
+    private final ModernLoanDataSource modernDataSource;
+    private final DualReadComparator comparator;
+
+    // Feature flag: "legacy", "modern", or "dual"
+    @Value("${datasource.mode:modern}")
+    private String mode;
+
+    public LoanService(LegacyLoanDataSource legacyDataSource,
+                       ModernLoanDataSource modernDataSource,
+                       DualReadComparator comparator) {
+        this.legacyDataSource = legacyDataSource;
+        this.modernDataSource = modernDataSource;
+        this.comparator = comparator;
     }
 
-    /** Returns all loan summaries from the modern schema */
+    /** Returns all loan summaries — routed based on datasource.mode */
     public List<LoanSummaryDto> getAllLoans() {
-        return loanAccountRepository.findAll().stream()
-                .map(this::toLoanSummary)
-                .collect(Collectors.toList());
+        if ("legacy".equals(mode)) {
+            return legacyDataSource.getAllLoans();
+        }
+        if ("dual".equals(mode)) {
+            // Dual-read: serve legacy response, shadow-compare modern
+            List<LoanSummaryDto> legacyResult = legacyDataSource.getAllLoans();
+            List<LoanSummaryDto> modernResult = modernDataSource.getAllLoans();
+            comparator.compareSilently(legacyResult, modernResult, "getAllLoans");
+            return legacyResult;
+        }
+        // Default: modern mode
+        return modernDataSource.getAllLoans();
     }
 
-    /** Returns a single loan by account number */
+    /** Returns a single loan by account number — routed based on datasource.mode */
     public LoanSummaryDto getLoanById(String loanAccountNumber) {
-        LoanAccount acct = loanAccountRepository.findByAccountNumber(loanAccountNumber)
-                .orElseThrow(() -> new RuntimeException("Loan not found: " + loanAccountNumber));
-        return toLoanSummary(acct);
+        if ("legacy".equals(mode)) {
+            return legacyDataSource.getLoanById(loanAccountNumber);
+        }
+        if ("dual".equals(mode)) {
+            LoanSummaryDto legacyResult = legacyDataSource.getLoanById(loanAccountNumber);
+            LoanSummaryDto modernResult = modernDataSource.getLoanById(loanAccountNumber);
+            comparator.compareSilently(legacyResult, modernResult,
+                    "getLoanById(" + loanAccountNumber + ")");
+            return legacyResult;
+        }
+        return modernDataSource.getLoanById(loanAccountNumber);
     }
 
-    /** Returns all borrowers from the modern schema */
+    /** Returns all borrowers — routed based on datasource.mode */
     public List<BorrowerDto> getAllBorrowers() {
-        return borrowerRepository.findAll().stream()
-                .map(this::toBorrowerDto)
-                .collect(Collectors.toList());
+        if ("legacy".equals(mode)) {
+            return legacyDataSource.getAllBorrowers();
+        }
+        if ("dual".equals(mode)) {
+            List<BorrowerDto> legacyResult = legacyDataSource.getAllBorrowers();
+            List<BorrowerDto> modernResult = modernDataSource.getAllBorrowers();
+            comparator.compareSilently(legacyResult, modernResult, "getAllBorrowers");
+            return legacyResult;
+        }
+        return modernDataSource.getAllBorrowers();
     }
 
-    /** Returns a single borrower with attached loans by external ID */
+    /** Returns a borrower with attached loans — routed based on datasource.mode */
     public BorrowerDto getBorrowerById(String borrowerId) {
-        Borrower borrower = borrowerRepository.findByExternalId(borrowerId)
-                .orElseThrow(() -> new RuntimeException("Borrower not found: " + borrowerId));
-        BorrowerDto dto = toBorrowerDto(borrower);
-
-        // Attach loans for this borrower via FK relationship
-        List<LoanSummaryDto> loans = loanAccountRepository.findByBorrowerExternalId(borrowerId)
-                .stream()
-                .map(this::toLoanSummary)
-                .collect(Collectors.toList());
-        dto.setLoans(loans);
-
-        return dto;
+        if ("legacy".equals(mode)) {
+            return legacyDataSource.getBorrowerById(borrowerId);
+        }
+        if ("dual".equals(mode)) {
+            BorrowerDto legacyResult = legacyDataSource.getBorrowerById(borrowerId);
+            BorrowerDto modernResult = modernDataSource.getBorrowerById(borrowerId);
+            comparator.compareSilently(legacyResult, modernResult,
+                    "getBorrowerById(" + borrowerId + ")");
+            return legacyResult;
+        }
+        return modernDataSource.getBorrowerById(borrowerId);
     }
 
-    /** Returns payments for a loan account, ordered by date descending */
+    /** Returns payments for a loan — routed based on datasource.mode */
     public List<PaymentDto> getPaymentsByLoan(String loanAccountNumber) {
-        return paymentRepository
-                .findByLoanAccountAccountNumberOrderByPaymentDateDesc(loanAccountNumber)
-                .stream()
-                .map(this::toPaymentDto)
-                .collect(Collectors.toList());
+        if ("legacy".equals(mode)) {
+            return legacyDataSource.getPaymentsByLoan(loanAccountNumber);
+        }
+        if ("dual".equals(mode)) {
+            List<PaymentDto> legacyResult = legacyDataSource.getPaymentsByLoan(loanAccountNumber);
+            List<PaymentDto> modernResult = modernDataSource.getPaymentsByLoan(loanAccountNumber);
+            comparator.compareSilently(legacyResult, modernResult,
+                    "getPaymentsByLoan(" + loanAccountNumber + ")");
+            return legacyResult;
+        }
+        return modernDataSource.getPaymentsByLoan(loanAccountNumber);
     }
 
-    // =========================================================================
-    // DTO MAPPING METHODS
-    // No more legacy string parsing needed — entities already have proper types.
-    // =========================================================================
-
-    /** Maps a modern LoanAccount entity to LoanSummaryDto */
-    private LoanSummaryDto toLoanSummary(LoanAccount acct) {
-        LoanSummaryDto dto = new LoanSummaryDto();
-        dto.setLoanAccountNumber(acct.getAccountNumber());
-
-        // Borrower name from normalized FK relationship
-        Borrower borrower = acct.getBorrower();
-        dto.setBorrowerName(borrower.getFirstName() + " " + borrower.getLastName());
-
-        // Product description from FK relationship
-        dto.setProductDescription(acct.getProduct().getName());
-
-        // Numeric fields are already typed — no parsing needed
-        dto.setOriginalAmount(acct.getOriginalAmount());
-        dto.setCurrentBalance(acct.getCurrentBalance());
-        dto.setInterestRate(acct.getInterestRate());
-        dto.setMonthlyPayment(acct.getMonthlyPayment());
-
-        // Status enum → display string
-        dto.setStatus(formatStatus(acct.getStatus()));
-
-        // Date already typed — format for API output
-        dto.setOriginationDate(acct.getOriginationDate() != null
-                ? acct.getOriginationDate().toString() : null);
-
-        // Compose full property address
-        dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
-                + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
-
-        dto.setPropertyType(acct.getPropertyType());
-        return dto;
+    /** Returns the current datasource mode (for health/status endpoints) */
+    public String getMode() {
+        return mode;
     }
 
-    /** Maps a modern Borrower entity to BorrowerDto */
-    private BorrowerDto toBorrowerDto(Borrower borrower) {
-        BorrowerDto dto = new BorrowerDto();
-        dto.setId(borrower.getExternalId());
-
-        // Build full name with optional middle initial
-        String middle = borrower.getMiddleInitial() != null
-                ? " " + borrower.getMiddleInitial() + "." : "";
-        dto.setFullName(borrower.getFirstName() + middle + " " + borrower.getLastName());
-
-        dto.setEmail(borrower.getEmail());
-        dto.setPhone(borrower.getPhone());
-        dto.setCity(borrower.getCity());
-        dto.setState(borrower.getState());
-        dto.setCreditScore(borrower.getCreditScore());
-        dto.setEmploymentStatus(borrower.getEmploymentStatus());
-        return dto;
-    }
-
-    /** Maps a modern Payment entity to PaymentDto */
-    private PaymentDto toPaymentDto(Payment pmt) {
-        PaymentDto dto = new PaymentDto();
-        dto.setPaymentId(String.valueOf(pmt.getId()));
-        dto.setLoanAccountNumber(pmt.getLoanAccount().getAccountNumber());
-        dto.setPaymentDate(pmt.getPaymentDate() != null
-                ? pmt.getPaymentDate().toString() : null);
-        dto.setTotalAmount(pmt.getTotalAmount());
-        dto.setPrincipalAmount(pmt.getPrincipalAmount());
-        dto.setInterestAmount(pmt.getInterestAmount());
-        dto.setEscrowAmount(pmt.getEscrowAmount());
-        dto.setLateFee(pmt.getLateFee());
-        dto.setType(formatPaymentType(pmt.getType()));
-        dto.setStatus(formatPaymentStatus(pmt.getStatus()));
-        return dto;
-    }
-
-    /** Formats loan account status enum to display string */
-    private String formatStatus(LoanAccount.Status status) {
-        if (status == null) return "Unknown";
-        return switch (status) {
-            case ACTIVE -> "Active";
-            case CLOSED -> "Closed";
-            case DEFAULT -> "Default";
-            case FORBEARANCE -> "Forbearance";
-        };
-    }
-
-    /** Formats payment type enum to display string */
-    private String formatPaymentType(Payment.PaymentType type) {
-        if (type == null) return "Unknown";
-        return switch (type) {
-            case REGULAR -> "Regular";
-            case EXTRA -> "Extra";
-            case PARTIAL -> "Partial";
-            case PREPAYMENT -> "Prepayment";
-        };
-    }
-
-    /** Formats payment status enum to display string */
-    private String formatPaymentStatus(Payment.PaymentStatus status) {
-        if (status == null) return "Unknown";
-        return switch (status) {
-            case POSTED -> "Posted";
-            case REVERSED -> "Reversed";
-            case NSF -> "Non-Sufficient Funds";
-            case PENDING -> "Pending";
-        };
+    /**
+     * Allows runtime mode switching without restart.
+     * Useful for toggling via an admin endpoint or during tests.
+     */
+    public void setMode(String mode) {
+        log.info("Datasource mode changed from '{}' to '{}'", this.mode, mode);
+        this.mode = mode;
     }
 }
