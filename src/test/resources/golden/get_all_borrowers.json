@@ -1,0 +1,57 @@
+[
+    {
+        "id": "B-10001",
+        "fullName": "James R. Mitchell",
+        "email": "j.mitchell@email.com",
+        "phone": "217-555-0142",
+        "city": "Springfield",
+        "state": "IL",
+        "creditScore": 745,
+        "employmentStatus": "EMPLOYED",
+        "loans": null
+    },
+    {
+        "id": "B-10002",
+        "fullName": "Sarah L. Chen",
+        "email": "s.chen@email.com",
+        "phone": "503-555-0198",
+        "city": "Portland",
+        "state": "OR",
+        "creditScore": 780,
+        "employmentStatus": "EMPLOYED",
+        "loans": null
+    },
+    {
+        "id": "B-10003",
+        "fullName": "Michael A. Torres",
+        "email": "m.torres@email.com",
+        "phone": "512-555-0167",
+        "city": "Austin",
+        "state": "TX",
+        "creditScore": 692,
+        "employmentStatus": "SELF-EMP",
+        "loans": null
+    },
+    {
+        "id": "B-10004",
+        "fullName": "Emily M. Johnson",
+        "email": "e.johnson@email.com",
+        "phone": "303-555-0134",
+        "city": "Denver",
+        "state": "CO",
+        "creditScore": 810,
+        "employmentStatus": "EMPLOYED",
+        "loans": null
+    },
+    {
+        "id": "B-10005",
+        "fullName": "Robert Williams",
+        "email": "r.williams@email.com",
+        "phone": "602-555-0156",
+        "city": "Phoenix",
+        "state": "AZ",
+        "creditScore": 658,
+        "employmentStatus": "RETIRED",
+        "loans": null
+    }
+]

@@ -1,0 +1,13 @@
+{
+    "loanAccountNumber": "LN-2019-00142",
+    "borrowerName": "James Mitchell",
+    "productDescription": "30-Year Fixed Rate Mortgage",
+    "originalAmount": 285000.0,
+    "currentBalance": 271432.56,
+    "interestRate": 4.75,
+    "monthlyPayment": 1487.02,
+    "status": "Active",
+    "originationDate": "2019-02-15",
+    "propertyAddress": "742 Elm Street, Springfield, IL 62701",
+    "propertyType": "Single Family"
+}

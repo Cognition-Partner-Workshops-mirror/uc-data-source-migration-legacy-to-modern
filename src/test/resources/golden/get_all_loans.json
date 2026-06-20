@@ -1,0 +1,67 @@
+[
+    {
+        "loanAccountNumber": "LN-2019-00142",
+        "borrowerName": "James Mitchell",
+        "productDescription": "30-Year Fixed Rate Mortgage",
+        "originalAmount": 285000.0,
+        "currentBalance": 271432.56,
+        "interestRate": 4.75,
+        "monthlyPayment": 1487.02,
+        "status": "Active",
+        "originationDate": "2019-02-15",
+        "propertyAddress": "742 Elm Street, Springfield, IL 62701",
+        "propertyType": "Single Family"
+    },
+    {
+        "loanAccountNumber": "LN-2020-00398",
+        "borrowerName": "Sarah Chen",
+        "productDescription": "15-Year Fixed Rate Mortgage",
+        "originalAmount": 420000.0,
+        "currentBalance": 312876.43,
+        "interestRate": 3.125,
+        "monthlyPayment": 2924.18,
+        "status": "Active",
+        "originationDate": "2020-04-01",
+        "propertyAddress": "1100 Oak Avenue, Portland, OR 97201",
+        "propertyType": "Condominium"
+    },
+    {
+        "loanAccountNumber": "LN-2018-00089",
+        "borrowerName": "Michael Torres",
+        "productDescription": "5/1 Adjustable Rate Mortgage",
+        "originalAmount": 195000.0,
+        "currentBalance": 178234.12,
+        "interestRate": 5.25,
+        "monthlyPayment": 1077.05,
+        "status": "Active",
+        "originationDate": "2018-07-01",
+        "propertyAddress": "305 Pine Road, Austin, TX 78701",
+        "propertyType": "Single Family"
+    },
+    {
+        "loanAccountNumber": "LN-2021-00567",
+        "borrowerName": "Emily Johnson",
+        "productDescription": "30-Year Fixed Rate Mortgage",
+        "originalAmount": 525000.0,
+        "currentBalance": 498123.78,
+        "interestRate": 3.875,
+        "monthlyPayment": 2468.35,
+        "status": "Active",
+        "originationDate": "2021-10-01",
+        "propertyAddress": "89 Maple Drive, Denver, CO 80202",
+        "propertyType": "Townhouse"
+    },
+    {
+        "loanAccountNumber": "LN-2017-00034",
+        "borrowerName": "Robert Williams",
+        "productDescription": "FHA 30-Year Fixed",
+        "originalAmount": 165000.0,
+        "currentBalance": 142567.9,
+        "interestRate": 4.25,
+        "monthlyPayment": 811.61,
+        "status": "Active",
+        "originationDate": "2017-03-01",
+        "propertyAddress": "2200 Cedar Lane, Phoenix, AZ 85001",
+        "propertyType": "Single Family"
+    }
+]

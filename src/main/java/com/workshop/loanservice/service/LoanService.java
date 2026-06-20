@@ -3,208 +3,188 @@ package com.workshop.loanservice.service;
 import com.workshop.loanservice.dto.BorrowerDto;
 import com.workshop.loanservice.dto.LoanSummaryDto;
 import com.workshop.loanservice.dto.PaymentDto;
-import com.workshop.loanservice.entity.LegacyBorrower;
-import com.workshop.loanservice.entity.LegacyLoanAccount;
-import com.workshop.loanservice.entity.LegacyLoanProduct;
-import com.workshop.loanservice.entity.LegacyPayment;
-import com.workshop.loanservice.repository.LegacyBorrowerRepository;
-import com.workshop.loanservice.repository.LegacyLoanAccountRepository;
-import com.workshop.loanservice.repository.LegacyLoanProductRepository;
-import com.workshop.loanservice.repository.LegacyPaymentRepository;
+import com.workshop.loanservice.entity.modern.Borrower;
+import com.workshop.loanservice.entity.modern.LoanAccount;
+import com.workshop.loanservice.entity.modern.Payment;
+import com.workshop.loanservice.repository.modern.BorrowerRepository;
+import com.workshop.loanservice.repository.modern.LoanAccountRepository;
+import com.workshop.loanservice.repository.modern.PaymentRepository;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Service layer that reads from legacy tables and translates
- * cryptic legacy fields into clean DTOs.
- *
- * MIGRATION TASK: This service contains all the translation logic
- * between legacy string-typed fields and proper Java types.
- * When switching data sources, this layer needs to be updated
- * (or replaced) to read from the modern schema.
+ * Service layer that reads from the modern normalized schema.
+ * Replaces the legacy implementation that performed string-to-type
+ * conversions at read time. Now entities already have proper types
+ * (LocalDate, BigDecimal, Integer, enums) so no translation is needed.
  */
 @Service
 public class LoanService {
 
-    private final LegacyBorrowerRepository borrowerRepository;
-    private final LegacyLoanAccountRepository loanAccountRepository;
-    private final LegacyLoanProductRepository loanProductRepository;
-    private final LegacyPaymentRepository paymentRepository;
+    private final BorrowerRepository borrowerRepository;
+    private final LoanAccountRepository loanAccountRepository;
+    private final PaymentRepository paymentRepository;
 
-    public LoanService(LegacyBorrowerRepository borrowerRepository,
-                       LegacyLoanAccountRepository loanAccountRepository,
-                       LegacyLoanProductRepository loanProductRepository,
-                       LegacyPaymentRepository paymentRepository) {
+    public LoanService(BorrowerRepository borrowerRepository,
+                       LoanAccountRepository loanAccountRepository,
+                       PaymentRepository paymentRepository) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
-        this.loanProductRepository = loanProductRepository;
         this.paymentRepository = paymentRepository;
     }
 
+    /** Returns all loan summaries from the modern schema */
     public List<LoanSummaryDto> getAllLoans() {
-        Map<String, LegacyLoanProduct> products = loanProductRepository.findAll()
-                .stream()
-                .collect(Collectors.toMap(LegacyLoanProduct::getProductCode, p -> p));
-
         return loanAccountRepository.findAll().stream()
-                .map(acct -> toLoanSummary(acct, products.get(acct.getProductCode())))
+                .map(this::toLoanSummary)
                 .collect(Collectors.toList());
     }
 
+    /** Returns a single loan by account number */
     public LoanSummaryDto getLoanById(String loanAccountNumber) {
-        LegacyLoanAccount acct = loanAccountRepository.findById(loanAccountNumber)
+        LoanAccount acct = loanAccountRepository.findByAccountNumber(loanAccountNumber)
                 .orElseThrow(() -> new RuntimeException("Loan not found: " + loanAccountNumber));
-        LegacyLoanProduct product = loanProductRepository.findById(acct.getProductCode())
-                .orElse(null);
-        return toLoanSummary(acct, product);
+        return toLoanSummary(acct);
     }
 
+    /** Returns all borrowers from the modern schema */
     public List<BorrowerDto> getAllBorrowers() {
         return borrowerRepository.findAll().stream()
                 .map(this::toBorrowerDto)
                 .collect(Collectors.toList());
     }
 
+    /** Returns a single borrower with attached loans by external ID */
     public BorrowerDto getBorrowerById(String borrowerId) {
-        LegacyBorrower borrower = borrowerRepository.findById(borrowerId)
+        Borrower borrower = borrowerRepository.findByExternalId(borrowerId)
                 .orElseThrow(() -> new RuntimeException("Borrower not found: " + borrowerId));
         BorrowerDto dto = toBorrowerDto(borrower);
 
-        // Attach loans for this borrower
-        Map<String, LegacyLoanProduct> products = loanProductRepository.findAll()
+        // Attach loans for this borrower via FK relationship
+        List<LoanSummaryDto> loans = loanAccountRepository.findByBorrowerExternalId(borrowerId)
                 .stream()
-                .collect(Collectors.toMap(LegacyLoanProduct::getProductCode, p -> p));
-        List<LoanSummaryDto> loans = loanAccountRepository.findByBorrowerId(borrowerId)
-                .stream()
-                .map(acct -> toLoanSummary(acct, products.get(acct.getProductCode())))
+                .map(this::toLoanSummary)
                 .collect(Collectors.toList());
         dto.setLoans(loans);
 
         return dto;
     }
 
+    /** Returns payments for a loan account, ordered by date descending */
     public List<PaymentDto> getPaymentsByLoan(String loanAccountNumber) {
-        return paymentRepository.findByLoanAccountNumberOrderByPaymentDateDesc(loanAccountNumber)
+        return paymentRepository
+                .findByLoanAccountAccountNumberOrderByPaymentDateDesc(loanAccountNumber)
                 .stream()
                 .map(this::toPaymentDto)
                 .collect(Collectors.toList());
     }
 
     // =========================================================================
-    // LEGACY TRANSLATION METHODS
-    // These methods handle the messy conversion from legacy string fields
-    // to proper types. After migration, these should be simplified or removed.
+    // DTO MAPPING METHODS
+    // No more legacy string parsing needed — entities already have proper types.
     // =========================================================================
 
-    private LoanSummaryDto toLoanSummary(LegacyLoanAccount acct, LegacyLoanProduct product) {
+    /** Maps a modern LoanAccount entity to LoanSummaryDto */
+    private LoanSummaryDto toLoanSummary(LoanAccount acct) {
         LoanSummaryDto dto = new LoanSummaryDto();
-        dto.setLoanAccountNumber(acct.getLoanAccountNumber());
-        dto.setBorrowerName(acct.getBorrowerFirstName() + " " + acct.getBorrowerLastName());
-        dto.setProductDescription(product != null ? product.getDescription() : acct.getProductCode());
-        dto.setOriginalAmount(parseLegacyAmount(acct.getOriginalAmount()));
-        dto.setCurrentBalance(parseLegacyAmount(acct.getCurrentBalance()));
-        dto.setInterestRate(parseLegacyDecimal(acct.getInterestRate()));
-        dto.setMonthlyPayment(parseLegacyAmount(acct.getMonthlyPayment()));
-        dto.setStatus(expandStatusCode(acct.getStatusCode()));
-        dto.setOriginationDate(acct.getOriginationDate());
+        dto.setLoanAccountNumber(acct.getAccountNumber());
+
+        // Borrower name from normalized FK relationship
+        Borrower borrower = acct.getBorrower();
+        dto.setBorrowerName(borrower.getFirstName() + " " + borrower.getLastName());
+
+        // Product description from FK relationship
+        dto.setProductDescription(acct.getProduct().getName());
+
+        // Numeric fields are already typed — no parsing needed
+        dto.setOriginalAmount(acct.getOriginalAmount());
+        dto.setCurrentBalance(acct.getCurrentBalance());
+        dto.setInterestRate(acct.getInterestRate());
+        dto.setMonthlyPayment(acct.getMonthlyPayment());
+
+        // Status enum → display string
+        dto.setStatus(formatStatus(acct.getStatus()));
+
+        // Date already typed — format for API output
+        dto.setOriginationDate(acct.getOriginationDate() != null
+                ? acct.getOriginationDate().toString() : null);
+
+        // Compose full property address
         dto.setPropertyAddress(acct.getPropertyAddress() + ", " + acct.getPropertyCity()
                 + ", " + acct.getPropertyState() + " " + acct.getPropertyZip());
-        dto.setPropertyType(expandPropertyType(acct.getPropertyType()));
+
+        dto.setPropertyType(acct.getPropertyType());
         return dto;
     }
 
-    private BorrowerDto toBorrowerDto(LegacyBorrower borrower) {
+    /** Maps a modern Borrower entity to BorrowerDto */
+    private BorrowerDto toBorrowerDto(Borrower borrower) {
         BorrowerDto dto = new BorrowerDto();
-        dto.setId(borrower.getBorrowerId());
-        String middle = borrower.getMiddleInitial() != null ? " " + borrower.getMiddleInitial() + "." : "";
+        dto.setId(borrower.getExternalId());
+
+        // Build full name with optional middle initial
+        String middle = borrower.getMiddleInitial() != null
+                ? " " + borrower.getMiddleInitial() + "." : "";
         dto.setFullName(borrower.getFirstName() + middle + " " + borrower.getLastName());
+
         dto.setEmail(borrower.getEmail());
-        dto.setPhone(borrower.getPhoneNumber());
+        dto.setPhone(borrower.getPhone());
         dto.setCity(borrower.getCity());
-        dto.setState(borrower.getStateCode());
-        dto.setCreditScore(parseLegacyInteger(borrower.getCreditScore()));
+        dto.setState(borrower.getState());
+        dto.setCreditScore(borrower.getCreditScore());
         dto.setEmploymentStatus(borrower.getEmploymentStatus());
         return dto;
     }
 
-    private PaymentDto toPaymentDto(LegacyPayment pmt) {
+    /** Maps a modern Payment entity to PaymentDto */
+    private PaymentDto toPaymentDto(Payment pmt) {
         PaymentDto dto = new PaymentDto();
-        dto.setPaymentId(pmt.getPaymentSequenceNumber());
-        dto.setLoanAccountNumber(pmt.getLoanAccountNumber());
-        dto.setPaymentDate(pmt.getPaymentDate());
-        dto.setTotalAmount(parseLegacyAmount(pmt.getTotalAmount()));
-        dto.setPrincipalAmount(parseLegacyAmount(pmt.getPrincipalAmount()));
-        dto.setInterestAmount(parseLegacyAmount(pmt.getInterestAmount()));
-        dto.setEscrowAmount(parseLegacyAmount(pmt.getEscrowAmount()));
-        dto.setLateFee(parseLegacyAmount(pmt.getLateFee()));
-        dto.setType(expandPaymentType(pmt.getTypeCode()));
-        dto.setStatus(expandPaymentStatus(pmt.getStatusCode()));
+        dto.setPaymentId(String.valueOf(pmt.getId()));
+        dto.setLoanAccountNumber(pmt.getLoanAccount().getAccountNumber());
+        dto.setPaymentDate(pmt.getPaymentDate() != null
+                ? pmt.getPaymentDate().toString() : null);
+        dto.setTotalAmount(pmt.getTotalAmount());
+        dto.setPrincipalAmount(pmt.getPrincipalAmount());
+        dto.setInterestAmount(pmt.getInterestAmount());
+        dto.setEscrowAmount(pmt.getEscrowAmount());
+        dto.setLateFee(pmt.getLateFee());
+        dto.setType(formatPaymentType(pmt.getType()));
+        dto.setStatus(formatPaymentStatus(pmt.getStatus()));
         return dto;
     }
 
-    /**
-     * Parse legacy amount strings like "285,000" or "1,487.02" into BigDecimal.
-     */
-    private BigDecimal parseLegacyAmount(String amount) {
-        if (amount == null || amount.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(amount.replace(",", ""));
-    }
-
-    private BigDecimal parseLegacyDecimal(String value) {
-        if (value == null || value.isBlank()) return BigDecimal.ZERO;
-        return new BigDecimal(value.trim());
-    }
-
-    private Integer parseLegacyInteger(String value) {
-        if (value == null || value.isBlank()) return null;
-        return Integer.parseInt(value.trim());
-    }
-
-    private String expandStatusCode(String code) {
-        if (code == null) return "Unknown";
-        return switch (code) {
-            case "ACT" -> "Active";
-            case "CLO" -> "Closed";
-            case "DFT" -> "Default";
-            case "FRB" -> "Forbearance";
-            default -> code;
+    /** Formats loan account status enum to display string */
+    private String formatStatus(LoanAccount.Status status) {
+        if (status == null) return "Unknown";
+        return switch (status) {
+            case ACTIVE -> "Active";
+            case CLOSED -> "Closed";
+            case DEFAULT -> "Default";
+            case FORBEARANCE -> "Forbearance";
         };
     }
 
-    private String expandPropertyType(String code) {
-        if (code == null) return "Unknown";
-        return switch (code) {
-            case "SFR" -> "Single Family Residence";
-            case "CND" -> "Condominium";
-            case "MFR" -> "Multi-Family Residence";
-            case "TWN" -> "Townhouse";
-            default -> code;
+    /** Formats payment type enum to display string */
+    private String formatPaymentType(Payment.PaymentType type) {
+        if (type == null) return "Unknown";
+        return switch (type) {
+            case REGULAR -> "Regular";
+            case EXTRA -> "Extra";
+            case PARTIAL -> "Partial";
+            case PREPAYMENT -> "Prepayment";
         };
     }
 
-    private String expandPaymentType(String code) {
-        if (code == null) return "Unknown";
-        return switch (code) {
-            case "REG" -> "Regular";
-            case "EXT" -> "Extra";
-            case "PRT" -> "Partial";
-            case "PRE" -> "Prepayment";
-            default -> code;
-        };
-    }
-
-    private String expandPaymentStatus(String code) {
-        if (code == null) return "Unknown";
-        return switch (code) {
-            case "PST" -> "Posted";
-            case "REV" -> "Reversed";
-            case "NSF" -> "Non-Sufficient Funds";
-            case "PND" -> "Pending";
-            default -> code;
+    /** Formats payment status enum to display string */
+    private String formatPaymentStatus(Payment.PaymentStatus status) {
+        if (status == null) return "Unknown";
+        return switch (status) {
+            case POSTED -> "Posted";
+            case REVERSED -> "Reversed";
+            case NSF -> "Non-Sufficient Funds";
+            case PENDING -> "Pending";
         };
     }
 }
