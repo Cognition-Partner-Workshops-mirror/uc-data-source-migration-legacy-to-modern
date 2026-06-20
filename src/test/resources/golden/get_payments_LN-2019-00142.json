@@ -1,0 +1,26 @@
+[
+    {
+        "paymentId": "1",
+        "loanAccountNumber": "LN-2019-00142",
+        "paymentDate": "2025-12-15",
+        "totalAmount": 1487.02,
+        "principalAmount": 456.78,
+        "interestAmount": 1074.69,
+        "escrowAmount": 355.55,
+        "lateFee": 0.0,
+        "type": "Regular",
+        "status": "Posted"
+    },
+    {
+        "paymentId": "2",
+        "loanAccountNumber": "LN-2019-00142",
+        "paymentDate": "2025-11-15",
+        "totalAmount": 1487.02,
+        "principalAmount": 454.97,
+        "interestAmount": 1076.5,
+        "escrowAmount": 355.55,
+        "lateFee": 0.0,
+        "type": "Regular",
+        "status": "Posted"
+    }
+]
