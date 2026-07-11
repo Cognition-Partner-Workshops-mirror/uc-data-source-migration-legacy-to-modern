@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 44" width="260" height="44" role="img" aria-label="Bank of America">
+  <!-- Placeholder Bank of America style mark: red/navy flag glyph + wordmark. -->
+  <g>
+    <rect x="2" y="8" width="30" height="28" rx="2" fill="#012169"/>
+    <path d="M6 14 h9 l-3 6 h-9 z" fill="#E31837"/>
+    <path d="M18 14 h9 l-3 6 h-9 z" fill="#E31837"/>
+    <path d="M4 24 h9 l-3 6 h-9 z" fill="#E31837"/>
+    <path d="M16 24 h9 l-3 6 h-9 z" fill="#E31837"/>
+  </g>
+  <text x="42" y="21" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" fill="#012169">Bank of America</text>
+  <text x="42" y="36" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="600" fill="#E31837">SAP &#8594; Oracle Fusion Migration</text>
+</svg>
