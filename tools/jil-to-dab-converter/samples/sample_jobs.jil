@@ -1,0 +1,202 @@
+/* ============================================================================
+   Sample AutoSys JIL File — Banking ETL Pipeline
+   
+   This file demonstrates a realistic set of AutoSys job definitions for a
+   banking data pipeline, including:
+     - Box jobs (grouped job containers)
+     - Command jobs (shell scripts and SQL execution)
+     - File watcher jobs (monitoring for incoming data files)
+     - File transfer jobs (moving files between systems)
+     - Job dependencies (condition-based chaining)
+     - Scheduling (daily, weekday, and sub-hour intervals)
+     - Alerting and retry policies
+   ============================================================================ */
+
+/* --------------------------------------------------------------------------
+   BOX JOB: Daily Loan Data ETL Pipeline
+   Runs on weekdays at 6:00 AM, processes incoming loan data files
+   -------------------------------------------------------------------------- */
+
+insert_job: BOX_LOAN_ETL_DAILY   job_type: BOX
+owner: etl_admin@bank.com
+description: "Daily loan data ETL pipeline — extracts, transforms, and loads loan records"
+date_conditions: 1
+days_of_week: mo,tu,we,th,fr
+start_times: "06:00"
+timezone: US/Eastern
+alarm_if_fail: 1
+term_run_time: 240
+
+/* Step 1: Check for incoming loan data file */
+insert_job: FW_LOAN_DATA_FILE   job_type: FW
+box_name: BOX_LOAN_ETL_DAILY
+machine: etl_server_01
+owner: etl_admin@bank.com
+watch_file: /data/incoming/loan_extract_*.csv
+watch_interval: 120
+watch_file_min_size: 1024
+description: "Watch for daily loan extract file from core banking system"
+
+/* Step 2: Validate and stage the incoming file */
+insert_job: CMD_VALIDATE_LOAN_FILE   job_type: CMD
+box_name: BOX_LOAN_ETL_DAILY
+machine: etl_server_01
+owner: etl_admin@bank.com
+command: /opt/etl/scripts/validate_loan_file.sh
+condition: s(FW_LOAN_DATA_FILE)
+description: "Validate loan file format, checksums, and record counts"
+profile: /opt/etl/.profile
+std_out_file: /var/log/etl/validate_loan.out
+std_err_file: /var/log/etl/validate_loan.err
+alarm_if_fail: 1
+n_retrys: 2
+
+/* Step 3: Load validated data into staging tables */
+insert_job: CMD_LOAD_STAGING   job_type: CMD
+box_name: BOX_LOAN_ETL_DAILY
+machine: etl_server_01
+owner: etl_admin@bank.com
+command: /opt/etl/sql/load_staging.sql
+condition: s(CMD_VALIDATE_LOAN_FILE)
+description: "Load validated loan records into staging schema"
+alarm_if_fail: 1
+n_retrys: 1
+term_run_time: 60
+
+/* Step 4: Run transformation logic */
+insert_job: CMD_TRANSFORM_LOANS   job_type: CMD
+box_name: BOX_LOAN_ETL_DAILY
+machine: etl_server_01
+owner: etl_admin@bank.com
+command: /opt/etl/sql/transform_loans.sql
+condition: s(CMD_LOAD_STAGING)
+description: "Apply business rules: status expansion, LTV calculation, date normalization"
+alarm_if_fail: 1
+term_run_time: 90
+
+/* Step 5: Load into production tables */
+insert_job: CMD_LOAD_PRODUCTION   job_type: CMD
+box_name: BOX_LOAN_ETL_DAILY
+machine: etl_server_01
+owner: etl_admin@bank.com
+command: /opt/etl/sql/load_production.sql
+condition: s(CMD_TRANSFORM_LOANS)
+description: "Merge transformed loan data into production tables"
+alarm_if_fail: 1
+n_retrys: 1
+term_run_time: 45
+
+/* Step 6: Generate reports */
+insert_job: CMD_GENERATE_REPORTS   job_type: CMD
+box_name: BOX_LOAN_ETL_DAILY
+machine: etl_server_01
+owner: etl_admin@bank.com
+command: /opt/etl/scripts/generate_loan_reports.sh
+condition: s(CMD_LOAD_PRODUCTION)
+description: "Generate daily loan summary and exception reports"
+std_out_file: /var/log/etl/reports.out
+alarm_if_fail: 1
+
+
+/* --------------------------------------------------------------------------
+   STANDALONE JOB: Hourly Account Balance Sync
+   Runs every hour on weekdays to sync account balances
+   -------------------------------------------------------------------------- */
+
+insert_job: CMD_ACCOUNT_BALANCE_SYNC   job_type: CMD
+machine: etl_server_02
+owner: ops_team@bank.com
+command: /opt/sync/scripts/sync_account_balances.py
+description: "Hourly sync of account balances from core banking to data warehouse"
+date_conditions: 1
+days_of_week: mo,tu,we,th,fr
+start_times: "00:00"
+start_mins: 0
+alarm_if_fail: 1
+n_retrys: 3
+term_run_time: 30
+timezone: US/Eastern
+profile: /opt/sync/.profile
+
+
+/* --------------------------------------------------------------------------
+   FILE WATCHER: Monitor for Borrower Updates
+   Standalone file watcher that triggers downstream processing
+   -------------------------------------------------------------------------- */
+
+insert_job: FW_BORROWER_UPDATES   job_type: FW
+machine: etl_server_01
+owner: etl_admin@bank.com
+watch_file: /data/incoming/borrower_updates_*.xml
+watch_interval: 300
+watch_file_min_size: 512
+description: "Monitor for inbound borrower update files from external sources"
+alarm_if_fail: 1
+
+
+/* --------------------------------------------------------------------------
+   FILE TRANSFER: Archive Processed Files
+   Moves processed files to the archive server after ETL completion
+   -------------------------------------------------------------------------- */
+
+insert_job: FT_ARCHIVE_LOAN_FILES   job_type: FT
+machine: etl_server_01
+owner: etl_admin@bank.com
+src_machine: etl_server_01
+dest_machine: archive_server
+src_file: /data/incoming/loan_extract_*.csv
+dest_file: /archive/loans/
+description: "Archive processed loan extract files to long-term storage"
+condition: s(BOX_LOAN_ETL_DAILY)
+date_conditions: 1
+days_of_week: mo,tu,we,th,fr
+start_times: "10:00"
+alarm_if_fail: 1
+
+
+/* --------------------------------------------------------------------------
+   BOX JOB: Weekend Batch Reconciliation
+   Runs Saturday at midnight, performs weekly reconciliation
+   -------------------------------------------------------------------------- */
+
+insert_job: BOX_WEEKLY_RECONCILIATION   job_type: BOX
+owner: finance_team@bank.com
+description: "Weekly reconciliation batch — compares DW totals against source systems"
+date_conditions: 1
+days_of_week: sa
+start_times: "00:00"
+timezone: US/Eastern
+alarm_if_fail: 1
+term_run_time: 360
+
+/* Recon Step 1: Extract source system totals */
+insert_job: CMD_EXTRACT_SOURCE_TOTALS   job_type: CMD
+box_name: BOX_WEEKLY_RECONCILIATION
+machine: etl_server_01
+owner: finance_team@bank.com
+command: /opt/recon/scripts/extract_source_totals.sh
+description: "Pull current totals from all source banking systems"
+alarm_if_fail: 1
+n_retrys: 2
+term_run_time: 60
+
+/* Recon Step 2: Extract DW totals */
+insert_job: CMD_EXTRACT_DW_TOTALS   job_type: CMD
+box_name: BOX_WEEKLY_RECONCILIATION
+machine: etl_server_01
+owner: finance_team@bank.com
+command: /opt/recon/sql/extract_dw_totals.sql
+description: "Pull current totals from data warehouse tables"
+alarm_if_fail: 1
+term_run_time: 60
+
+/* Recon Step 3: Compare and report — depends on both extraction jobs */
+insert_job: CMD_RECONCILIATION_REPORT   job_type: CMD
+box_name: BOX_WEEKLY_RECONCILIATION
+machine: etl_server_01
+owner: finance_team@bank.com
+command: /opt/recon/scripts/generate_recon_report.sh
+condition: s(CMD_EXTRACT_SOURCE_TOTALS) & s(CMD_EXTRACT_DW_TOTALS)
+description: "Compare source vs DW totals and generate variance report"
+alarm_if_fail: 1
+std_out_file: /var/log/recon/weekly_report.out
