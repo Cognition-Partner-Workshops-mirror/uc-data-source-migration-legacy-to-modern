@@ -364,6 +364,49 @@ class TestConverter(unittest.TestCase):
         self.assertIsNotNone(task.notebook_task)
         self.assertIsNone(task.shell_task)
 
+    def test_non_success_conditions_not_mapped_as_dependencies(self):
+        """Verify failure/done/notrunning conditions are NOT mapped to depends_on."""
+        jil = """
+        insert_job: box_x   job_type: BOX
+
+        insert_job: job_a   job_type: CMD
+        box_name: box_x
+        command: /scripts/a.sh
+
+        insert_job: job_b   job_type: CMD
+        box_name: box_x
+        command: /scripts/b.sh
+        condition: f(job_a)
+
+        insert_job: job_c   job_type: CMD
+        box_name: box_x
+        command: /scripts/c.sh
+        condition: s(job_a)
+        """
+        jobs = parse_jil_text(jil)
+        bundle = convert_jobs(jobs)
+        tasks = {t.task_key: t for t in list(bundle.jobs.values())[0].tasks}
+
+        # job_b depends on failure of job_a — should NOT become a dependency
+        self.assertEqual(len(tasks["job_b"].depends_on), 0)
+        # job_c depends on success of job_a — should become a dependency
+        self.assertEqual(len(tasks["job_c"].depends_on), 1)
+
+    def test_schedule_without_weekday_uses_wildcard(self):
+        """Verify a schedule with no days_of_week produces a valid cron (not '? * ?')."""
+        jil = """
+        insert_job: daily_all_days   job_type: CMD
+        command: /scripts/daily.sh
+        date_conditions: 1
+        start_times: "22:00"
+        """
+        jobs = parse_jil_text(jil)
+        bundle = convert_jobs(jobs)
+        cron = list(bundle.jobs.values())[0].schedule.quartz_cron_expression
+        # Day-of-week field must be '*', not '?', so exactly one of dom/dow is '?'
+        self.assertEqual(cron, "0 00 22 ? * *")
+        self.assertNotIn("? * ?", cron)
+
     def test_shell_command_maps_to_shell_task(self):
         """Verify shell script commands get mapped to shell tasks."""
         jil = """

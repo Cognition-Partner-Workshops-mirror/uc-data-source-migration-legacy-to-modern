@@ -81,8 +81,10 @@ def _build_quartz_cron(job: JilJob) -> str | None:
     if job.start_mins:
         minutes = job.start_mins
 
-    # Parse days of week
-    days = "?"
+    # Parse days of week; default to '*' (every day) so the cron stays valid when
+    # no weekday list is present — Quartz requires exactly one of day-of-month /
+    # day-of-week to be '?', not both.
+    days = "*"
     if job.days_of_week:
         day_list = [d.strip().lower() for d in job.days_of_week.split(",")]
         mapped_days = [_DAY_MAP.get(d, d.upper()) for d in day_list]
@@ -135,7 +137,10 @@ def _convert_cmd_to_task(job: JilJob, all_jobs: dict[str, JilJob]) -> DabTask:
     # Build task dependency list from AutoSys conditions
     depends_on = []
     for cond in job.conditions:
-        # Only map success conditions to strict dependencies; failure/done are informational
+        # Only map success conditions to strict dependencies; failure/done/notrunning
+        # have no equivalent depends_on semantics in Databricks and are skipped.
+        if cond.condition_type != "s":
+            continue
         dep_key = _sanitize_key(cond.job_name)
         # Skip self-referencing box conditions (child depending on its own box start)
         if dep_key != task_key:
